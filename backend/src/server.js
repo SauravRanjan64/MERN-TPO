@@ -22,20 +22,36 @@ const jwt = require('jsonwebtoken');
 
 dotenv.config();
 
+// Build an allow-list from FRONTEND_URL (comma-separated) + localhost fallback
+// Example in Render env vars: FRONTEND_URL=https://dcrust-portal.vercel.app,http://localhost:5173
+const allowedOrigins = [
+  ...(process.env.FRONTEND_URL || '')
+    .split(',')
+    .map((u) => u.trim())
+    .filter(Boolean),
+  'http://localhost:5173',
+  'http://localhost:3000',
+];
+
+// Shared CORS handler used by both Express and Socket.IO
+const corsOptions = {
+  origin: (origin, callback) => {
+    // Allow requests with no origin (curl, Postman, server-to-server)
+    if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+    callback(new Error(`CORS: origin ${origin} not allowed`));
+  },
+  credentials: true,
+};
+
 const app = express();
 const server = http.createServer(app);
-const io = socketIo(server, {
-  cors: {
-    origin: process.env.FRONTEND_URL || 'http://localhost:5173',
-    credentials: true,
-  },
-});
+const io = socketIo(server, { cors: corsOptions });
 
 // Make io available to routes via app.set
 app.set('io', io);
 
 // Middleware
-app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:5173', credentials: true }));
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use(cookieParser());
 
