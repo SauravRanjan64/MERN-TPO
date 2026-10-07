@@ -26,6 +26,8 @@ const Login = () => {
   const [submitting, setSubmitting] = useState(false);
   const [demoLoading, setDemoLoading] = useState(null); // which demo role is loading
 
+  const showDemo = import.meta.env.DEV || import.meta.env.VITE_SHOW_DEMO === 'true';
+
   // Handle normal form submit
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -49,7 +51,12 @@ const Login = () => {
       const user = await login(account.email, account.password);
       navigate(getHomeForRole(user.role), { replace: true });
     } catch (err) {
-      setError(err.response?.data?.message || 'Demo login failed. Run "npm run seed" in the backend folder.');
+      const srvError = err.response?.data?.message;
+      if (import.meta.env.DEV) {
+        setError(srvError || 'Demo login failed. Run "npm run seed" in the backend folder.');
+      } else {
+        setError(srvError || 'Demo login failed.');
+      }
     } finally {
       setDemoLoading(null);
     }
@@ -81,32 +88,36 @@ const Login = () => {
       <p className="mt-4 text-sm text-center text-gray-500">New to the portal? <Link className="text-primary underline" to="/register">Create a student account</Link></p>
 
       {/* Demo accounts section */}
-      <div className="mt-6 border-t pt-5">
-        <p className="mb-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-400">⚡ Try a demo account</p>
-        <div className="flex flex-col gap-2">
-          {DEMO_ACCOUNTS.map((account) => (
-            <button
-              key={account.label}
-              onClick={() => handleDemoLogin(account)}
-              disabled={!!demoLoading || submitting}
-              className={`flex min-h-[44px] items-center justify-between rounded-lg border px-4 py-2 text-sm font-medium active:scale-95 disabled:opacity-60 ${account.color}`}
-            >
-              {/* Role label with emoji */}
-              <span>{account.emoji} {account.label}</span>
-              {/* Show email and spinner/arrow */}
-              <span className="flex items-center gap-2 text-xs opacity-70">
-                {account.email}
-                {demoLoading === account.label ? (
-                  <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" strokeOpacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10" /></svg>
-                ) : (
-                  <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
-                )}
-              </span>
-            </button>
-          ))}
+      {showDemo && (
+        <div className="mt-6 border-t pt-5">
+          <p className="mb-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-400">⚡ Try a demo account</p>
+          <div className="flex flex-col gap-2">
+            {DEMO_ACCOUNTS.map((account) => (
+              <button
+                key={account.label}
+                onClick={() => handleDemoLogin(account)}
+                disabled={!!demoLoading || submitting}
+                className={`flex min-h-[44px] items-center justify-between rounded-lg border px-4 py-2 text-sm font-medium active:scale-95 disabled:opacity-60 ${account.color}`}
+              >
+                {/* Role label with emoji */}
+                <span>{account.emoji} {account.label}</span>
+                {/* Show email and spinner/arrow */}
+                <span className="flex items-center gap-2 text-xs opacity-70">
+                  {account.email}
+                  {demoLoading === account.label ? (
+                    <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" strokeOpacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10" /></svg>
+                  ) : (
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
+                  )}
+                </span>
+              </button>
+            ))}
+          </div>
+          {import.meta.env.DEV && (
+             <p className="mt-3 text-center text-xs text-gray-400">Demo data: run <code className="rounded bg-gray-100 px-1">npm run seed</code> in /backend</p>
+          )}
         </div>
-        <p className="mt-3 text-center text-xs text-gray-400">Demo data: run <code className="rounded bg-gray-100 px-1">npm run seed</code> in /backend</p>
-      </div>
+      )}
     </main>
   );
 };

@@ -1,5 +1,4 @@
-// Application router configured with Auth, ToastProvider, and BottomNav
-import React, { useContext } from 'react';
+import React, { useContext, useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, AuthContext } from './context/AuthContext';
 import { ToastProvider } from './components/Toast';
@@ -41,6 +40,31 @@ const RootRedirect = () => {
   return <Navigate to={user.role === 'ADMIN' ? '/admin/dashboard' : user.role === 'COMPANY' ? '/company/dashboard' : '/student/home'} replace />;
 };
 
+const ServerWakeBanner = () => {
+  const [waking, setWaking] = useState(false);
+
+  useEffect(() => {
+    const handleWaking = () => setWaking(true);
+    const handleAwake = () => setWaking(false);
+    
+    window.addEventListener('server:waking', handleWaking);
+    window.addEventListener('server:awake', handleAwake);
+    
+    return () => {
+      window.removeEventListener('server:waking', handleWaking);
+      window.removeEventListener('server:awake', handleAwake);
+    };
+  }, []);
+
+  if (!waking) return null;
+  
+  return (
+    <div className="bg-amber-100 text-amber-800 px-4 py-2 text-center text-sm font-medium z-50">
+      Waking up server... This might take up to a minute on the free tier. Please wait.
+    </div>
+  );
+};
+
 // Main application component setting up router, notifications, and navigation
 const App = () => {
   return (
@@ -48,6 +72,7 @@ const App = () => {
       <ToastProvider>
         <Router>
           <div className="min-h-screen bg-gray-50 text-gray-900 flex flex-col font-sans text-base pb-16">
+            <ServerWakeBanner />
             <Navbar />
             <div className="flex-1">
               <Routes>

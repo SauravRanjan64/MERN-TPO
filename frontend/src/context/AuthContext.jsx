@@ -17,32 +17,68 @@ export const AuthProvider = ({ children }) => {
         setUser(res.data.user);
       } catch (err) {
         setUser(null);
+        localStorage.removeItem('token');
       } finally {
         setLoading(false);
       }
     };
     fetchMe();
+
+    const handleUnauthorized = () => {
+      setUser(null);
+      // optionally trigger redirect, but components watching `user` via ProtectedRoute should handle it
+    };
+    window.addEventListener('auth:unauthorized', handleUnauthorized);
+    return () => window.removeEventListener('auth:unauthorized', handleUnauthorized);
   }, []);
 
-  // Initialize socket after we know user (or even before)
+  // Initialize socket after we know user is logged in
   useEffect(() => {
-    const s = io(import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000', {
+    if (!user) {
+      if (socket) {
+        socket.disconnect();
+        setSocket(null);
+      }
+      return;
+    }
+
+    const token = localStorage.getItem('token');
+    let rawBaseURL = import.meta.env.VITE_BACKEND_URL || '';
+    const baseURL = rawBaseURL.replace(/\/+$/, '') || 'http://localhost:5000';
+    
+    const s = io(baseURL, {
       withCredentials: true,
-      transports: ['websocket']
+      transports: ['polling', 'websocket'],
+      auth: { token },
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      reconnectionAttempts: 10,
     });
     setSocket(s);
     return () => s.disconnect();
-  }, []);
+  }, [user]);
 
   const login = async (email, password) => {
     const res = await api.post('/api/auth/login', { email, password });
+    if (res.data.token) {
+      localStorage.setItem('token', res.data.token);
+    }
     setUser(res.data.user);
     return res.data.user;
   };
 
   const logout = async () => {
-    await api.post('/api/auth/logout', {});
+    try {
+      await api.post('/api/auth/logout', {});
+    } catch (e) {
+      console.warn('Logout failed', e);
+    }
+    localStorage.removeItem('token');
     setUser(null);
+    if (socket) {
+      socket.disconnect();
+      setSocket(null);
+    }
   };
 
   return (
