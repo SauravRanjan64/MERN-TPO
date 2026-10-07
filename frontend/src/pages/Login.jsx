@@ -1,125 +1,91 @@
-import React, { useContext, useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { AuthContext } from '../context/AuthContext';
+// Login + Register page (toggle between the two forms)
+import { useState } from 'react';
+import { useNavigate, Navigate } from 'react-router-dom';
+import { useAuth } from '../AuthContext';
 
-// Return target home route based on user role
-const getHomeForRole = (role) => {
-  if (role === 'ADMIN') return '/admin/dashboard';
-  if (role === 'COMPANY') return '/company/dashboard';
-  return '/student/home';
-};
-
-// Seed demo accounts for quick one-click access
-const DEMO_ACCOUNTS = [
-  { label: 'Student', emoji: '🎓', email: 'rahul@student.com', password: 'pass123', color: 'bg-blue-50 border-blue-300 text-blue-700' },
-  { label: 'Company', emoji: '🏢', email: 'tcs@company.com',   password: 'tcs123',  color: 'bg-amber-50 border-amber-300 text-amber-700' },
-  { label: 'Admin',   emoji: '🛡️', email: 'admin@dcrust.com', password: 'admin123', color: 'bg-green-50 border-green-300 text-green-700' },
-];
-
-const Login = () => {
-  const { login } = useContext(AuthContext);
+export default function Login() {
+  const { user, login, register } = useAuth();
   const navigate = useNavigate();
-  const location = useLocation();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+
+  const [isRegister, setIsRegister] = useState(false); // toggle login/register
+  const [form, setForm] = useState({ name: '', email: '', password: '', branch: '', cgpa: '' });
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [demoLoading, setDemoLoading] = useState(null); // which demo role is loading
 
-  const showDemo = import.meta.env.DEV || import.meta.env.VITE_SHOW_DEMO === 'true';
+  // If already logged in, redirect
+  if (user) return <Navigate to={user.role === 'ADMIN' ? '/admin' : '/student'} />;
 
-  // Handle normal form submit
-  const handleSubmit = async (event) => {
-    event.preventDefault();
+  const handleChange = (e) => {
+    setForm({ ...form, [e.target.name]: e.target.value });
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
     setError('');
     setSubmitting(true);
     try {
-      const user = await login(email, password);
-      navigate(getHomeForRole(user.role), { replace: true });
+      let loggedUser;
+      if (isRegister) {
+        loggedUser = await register({
+          name: form.name, email: form.email, password: form.password,
+          branch: form.branch, cgpa: Number(form.cgpa) || 0
+        });
+      } else {
+        loggedUser = await login(form.email, form.password);
+      }
+      navigate(loggedUser.role === 'ADMIN' ? '/admin' : '/student');
     } catch (err) {
-      setError(err.response?.data?.message || 'Unable to sign in. Please try again.');
+      setError(err.response?.data?.message || 'Something went wrong. Please try again.');
     } finally {
       setSubmitting(false);
     }
   };
 
-  // Log in instantly with a demo account credential
-  const handleDemoLogin = async (account) => {
-    setError('');
-    setDemoLoading(account.label);
-    try {
-      const user = await login(account.email, account.password);
-      navigate(getHomeForRole(user.role), { replace: true });
-    } catch (err) {
-      const srvError = err.response?.data?.message;
-      if (import.meta.env.DEV) {
-        setError(srvError || 'Demo login failed. Run "npm run seed" in the backend folder.');
-      } else {
-        setError(srvError || 'Demo login failed.');
-      }
-    } finally {
-      setDemoLoading(null);
-    }
-  };
+  // Fill form with demo credentials
+  const fillAdmin = () => setForm({ ...form, email: 'admin@dcrust.com', password: 'admin123' });
+  const fillStudent = () => setForm({ ...form, email: 'rahul@student.com', password: 'pass123' });
 
   return (
-    <main className="mx-auto mt-8 max-w-md rounded-lg bg-white p-6 shadow">
-      <h1 className="mb-1 text-2xl font-bold">Sign in</h1>
-      <p className="mb-6 text-sm text-gray-500">DCRUST Placement Portal</p>
+    <div className="auth-page">
+      <div className="auth-card">
+        <h2>{isRegister ? 'Student Registration' : 'Login'}</h2>
 
-      {location.state?.message && <p className="mb-4 text-green-700">{location.state.message}</p>}
-      {error && <p role="alert" className="mb-4 rounded bg-red-50 p-2 text-sm text-red-700">{error}</p>}
-
-      {/* Main login form */}
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <label className="block">
-          <span className="mb-1 block text-sm font-medium">Email</span>
-          <input className="w-full rounded border p-3 text-base" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
-        </label>
-        <label className="block">
-          <span className="mb-1 block text-sm font-medium">Password</span>
-          <input className="w-full rounded border p-3 text-base" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
-        </label>
-        <button className="w-full rounded bg-primary p-3 text-base font-semibold text-white active:scale-95 disabled:opacity-60" type="submit" disabled={submitting || demoLoading}>
-          {submitting ? 'Signing in…' : 'Sign in'}
-        </button>
-      </form>
-
-      <p className="mt-4 text-sm text-center text-gray-500">New to the portal? <Link className="text-primary underline" to="/register">Create a student account</Link></p>
-
-      {/* Demo accounts section */}
-      {showDemo && (
-        <div className="mt-6 border-t pt-5">
-          <p className="mb-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-400">⚡ Try a demo account</p>
-          <div className="flex flex-col gap-2">
-            {DEMO_ACCOUNTS.map((account) => (
-              <button
-                key={account.label}
-                onClick={() => handleDemoLogin(account)}
-                disabled={!!demoLoading || submitting}
-                className={`flex min-h-[44px] items-center justify-between rounded-lg border px-4 py-2 text-sm font-medium active:scale-95 disabled:opacity-60 ${account.color}`}
-              >
-                {/* Role label with emoji */}
-                <span>{account.emoji} {account.label}</span>
-                {/* Show email and spinner/arrow */}
-                <span className="flex items-center gap-2 text-xs opacity-70">
-                  {account.email}
-                  {demoLoading === account.label ? (
-                    <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" strokeOpacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10" /></svg>
-                  ) : (
-                    <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
-                  )}
-                </span>
-              </button>
-            ))}
+        {!isRegister && (
+          <div className="demo-buttons">
+            <button type="button" onClick={fillAdmin} className="btn btn-sm btn-outline">Fill Admin Demo</button>
+            <button type="button" onClick={fillStudent} className="btn btn-sm btn-outline">Fill Student Demo</button>
           </div>
-          {import.meta.env.DEV && (
-             <p className="mt-3 text-center text-xs text-gray-400">Demo data: run <code className="rounded bg-gray-100 px-1">npm run seed</code> in /backend</p>
-          )}
-        </div>
-      )}
-    </main>
-  );
-};
+        )}
 
-export default Login;
+        <form onSubmit={handleSubmit}>
+          {isRegister && (
+            <>
+              <input name="name" placeholder="Full Name" value={form.name} onChange={handleChange} required />
+              <input name="branch" placeholder="Branch (e.g. CSE)" value={form.branch} onChange={handleChange} />
+              <input name="cgpa" placeholder="CGPA (e.g. 8.5)" type="number" step="0.1" min="0" max="10" value={form.cgpa} onChange={handleChange} />
+            </>
+          )}
+          <input name="email" type="email" placeholder="Email" value={form.email} onChange={handleChange} required />
+          <input name="password" type="password" placeholder="Password" value={form.password} onChange={handleChange} required />
+
+          {error && <p className="error-msg">{error}</p>}
+
+          <button type="submit" className="btn btn-primary btn-block" disabled={submitting}>
+            {submitting ? 'Please wait...' : (isRegister ? 'Register' : 'Login')}
+          </button>
+
+          {submitting && (
+            <p className="hint">Server may take up to a minute to wake up on first try.</p>
+          )}
+        </form>
+
+        <p className="toggle-text">
+          {isRegister ? 'Already have an account?' : "Don't have an account?"}{' '}
+          <button type="button" className="link-btn" onClick={() => { setIsRegister(!isRegister); setError(''); }}>
+            {isRegister ? 'Login' : 'Register'}
+          </button>
+        </p>
+      </div>
+    </div>
+  );
+}

@@ -2,25 +2,20 @@
   "name": "dcrust-placement-frontend",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview"
   },
   "dependencies": {
-    "autoprefixer": "^10.4.15",
-    "axios": "^1.7.2",
-    "axios-retry": "^4.5.0",
-    "lucide-react": "^0.378.0",
-    "postcss": "^8.4.31",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "react-router-dom": "^6.22.0",
-    "socket.io-client": "^4.7.5",
-    "tailwindcss": "^3.4.1"
+    "axios": "^1.7.7",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.26.2"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.1",
-    "vite": "^5.2.0"
+    "vite": "^5.4.8"
   }
 }
