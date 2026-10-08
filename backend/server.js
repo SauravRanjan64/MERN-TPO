@@ -25,7 +25,7 @@ const PORT = process.env.PORT || 5000;
 // Allow frontend origins (comma-separated in env) + localhost dev + deployed Vercel domain
 const allowedOrigins = [
   'http://localhost:5173',
-  'https://dcrust-portal.vercel.app',
+  'https://tpo-frontend-sigma.vercel.app',
   ...(process.env.FRONTEND_URL
     ? process.env.FRONTEND_URL.split(',').map(u => u.trim().replace(/\/$/, ''))
     : [])
@@ -60,16 +60,20 @@ app.use((err, req, res, next) => {
 // ---- Seed default data if database is empty ----
 async function seedIfEmpty() {
   const count = await User.countDocuments();
-  if (count > 0) return; // already has data
+  const adminExists = await User.exists({ email: 'admin@dcrust.com' });
+
+  if (!adminExists) {
+    const adminPass = await bcrypt.hash('admin123', 10);
+    await User.create({
+      name: 'Admin TPO', email: 'admin@dcrust.com',
+      password: adminPass, role: 'ADMIN'
+    });
+    console.log('Default admin account created.');
+  }
+
+  if (count > 0) return; // keep existing user and job data
 
   console.log('Database empty — seeding default data...');
-
-  // create admin
-  const adminPass = await bcrypt.hash('admin123', 10);
-  await User.create({
-    name: 'Admin TPO', email: 'admin@dcrust.com',
-    password: adminPass, role: 'ADMIN'
-  });
 
   // create a sample student
   const stuPass = await bcrypt.hash('pass123', 10);

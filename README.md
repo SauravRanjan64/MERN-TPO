@@ -163,7 +163,7 @@ FRONTEND_URL=http://localhost:5173
 
 ## Seed Credentials
 
-Run `npm run seed` in `backend/` to generate:
+The backend seeds its demo data on startup when the database is empty. If the database already contains users, it creates the demo admin only when that email is not already registered; it does not overwrite existing accounts.
 
 ### Admin
 - **Email**: `admin@dcrust.com`
