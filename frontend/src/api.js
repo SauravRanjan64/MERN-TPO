@@ -2,7 +2,8 @@
 import axios from 'axios';
 
 // Remove trailing slash from API URL if present
-const baseURL = (import.meta.env.VITE_API_URL || 'http://localhost:5000').replace(/\/$/, '');
+const defaultUrl = import.meta.env.PROD ? 'https://tpo-brth.onrender.com' : 'http://localhost:5000';
+const baseURL = (import.meta.env.VITE_API_URL || defaultUrl).replace(/\/$/, '');
 
 const api = axios.create({
   baseURL,
