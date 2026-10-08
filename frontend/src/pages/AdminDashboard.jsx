@@ -1,10 +1,11 @@
-// Admin view: post jobs, see all jobs, manage applications
+// Admin view: post jobs, see all jobs, manage applications, review resumes
 import { useState, useEffect } from 'react';
 import api from '../api';
 
 export default function AdminDashboard() {
   const [jobs, setJobs] = useState([]);
   const [apps, setApps] = useState([]);
+  const [resumes, setResumes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState('');
 
@@ -18,12 +19,14 @@ export default function AdminDashboard() {
   async function fetchData() {
     setLoading(true);
     try {
-      const [jobsRes, appsRes] = await Promise.all([
+      const [jobsRes, appsRes, resumesRes] = await Promise.all([
         api.get('/api/jobs'),
-        api.get('/api/applications')
+        api.get('/api/applications'),
+        api.get('/api/resumes')
       ]);
       setJobs(jobsRes.data);
       setApps(appsRes.data);
+      setResumes(resumesRes.data);
     } catch (err) {
       setMsg('Failed to load data.');
     } finally {
@@ -70,12 +73,52 @@ export default function AdminDashboard() {
     }
   }
 
+  // View a student's resume PDF in new tab
+  async function handleViewResume(resumeId) {
+    try {
+      const res = await api.get(`/api/resumes/${resumeId}/file`, { responseType: 'blob' });
+      const fileURL = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+      window.open(fileURL, '_blank');
+    } catch (err) {
+      setMsg(err.response?.data?.message || 'Failed to open resume.');
+    }
+  }
+
+  // Approve student resume
+  async function handleApproveResume(resumeId) {
+    const remarks = window.prompt('Enter remarks (optional):', '') || '';
+    try {
+      await api.put(`/api/resumes/${resumeId}/review`, { status: 'APPROVED', remarks });
+      setMsg('Resume approved successfully.');
+      fetchData();
+    } catch (err) {
+      setMsg(err.response?.data?.message || 'Failed to approve resume.');
+    }
+  }
+
+  // Reject student resume
+  async function handleRejectResume(resumeId) {
+    const remarks = window.prompt('Enter reason for rejection (required):');
+    if (remarks === null) return; // user cancelled
+    if (!remarks.trim()) {
+      alert('A reason/remarks is required to reject a resume.');
+      return;
+    }
+    try {
+      await api.put(`/api/resumes/${resumeId}/review`, { status: 'REJECTED', remarks: remarks.trim() });
+      setMsg('Resume rejected.');
+      fetchData();
+    } catch (err) {
+      setMsg(err.response?.data?.message || 'Failed to reject resume.');
+    }
+  }
+
   if (loading) return <p className="center">Loading dashboard...</p>;
 
   return (
     <div>
       <h2>Post a New Job</h2>
-      {msg && <p className={msg.includes('created') ? 'success-msg' : 'error-msg'}>{msg}</p>}
+      {msg && <p className={msg.includes('created') || msg.includes('success') ? 'success-msg' : 'error-msg'}>{msg}</p>}
 
       <form className="job-form" onSubmit={handleCreateJob}>
         <input placeholder="Job Title" value={jobForm.title}
@@ -114,6 +157,59 @@ export default function AdminDashboard() {
         </table>
       )}
 
+      <h2 style={{ marginTop: '2rem' }}>Student Resumes</h2>
+      {resumes.length === 0 ? <p>No resumes uploaded yet.</p> : (
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Student</th>
+              <th>Email</th>
+              <th>Branch</th>
+              <th>CGPA</th>
+              <th>File</th>
+              <th>Status</th>
+              <th>Remarks</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {resumes.map(r => (
+              <tr key={r._id}>
+                <td>{r.user?.name || 'N/A'}</td>
+                <td>{r.user?.email || 'N/A'}</td>
+                <td>{r.user?.branch || '-'}</td>
+                <td>{r.user?.cgpa ?? '-'}</td>
+                <td>{r.filename} ({(r.size / 1024).toFixed(1)} KB)</td>
+                <td><span className={`badge badge-${r.status.toLowerCase()}`}>{r.status}</span></td>
+                <td>{r.remarks || '-'}</td>
+                <td>
+                  <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap' }}>
+                    <button
+                      className="btn btn-sm btn-outline"
+                      onClick={() => handleViewResume(r._id)}
+                    >
+                      View
+                    </button>
+                    <button
+                      className="btn btn-sm btn-success"
+                      onClick={() => handleApproveResume(r._id)}
+                    >
+                      Approve
+                    </button>
+                    <button
+                      className="btn btn-sm btn-danger"
+                      onClick={() => handleRejectResume(r._id)}
+                    >
+                      Reject
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
       <h2 style={{ marginTop: '2rem' }}>All Applications</h2>
       {apps.length === 0 ? <p>No applications yet.</p> : (
         <table className="data-table">
@@ -145,3 +241,4 @@ export default function AdminDashboard() {
     </div>
   );
 }
+

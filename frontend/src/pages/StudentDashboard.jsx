@@ -1,15 +1,19 @@
-// Student view: available jobs + my applications
-import { useState, useEffect } from 'react';
+// Student view: resume management + available jobs + my applications
+import { useState, useEffect, useRef } from 'react';
 import api from '../api';
 
 export default function StudentDashboard() {
   const [jobs, setJobs] = useState([]);
   const [myApps, setMyApps] = useState([]);
+  const [resume, setResume] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [applyMsg, setApplyMsg] = useState('');  // success or error message after apply
+  const [applyMsg, setApplyMsg] = useState('');    // success or error message after apply
+  const [resumeMsg, setResumeMsg] = useState('');  // success or error message for resume actions
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef(null);
 
-  // Fetch jobs and my applications on mount
+  // Fetch jobs, applications, and current resume on mount
   useEffect(() => {
     fetchData();
   }, []);
@@ -17,16 +21,66 @@ export default function StudentDashboard() {
   async function fetchData() {
     setLoading(true);
     try {
-      const [jobsRes, appsRes] = await Promise.all([
+      const [jobsRes, appsRes, resumeRes] = await Promise.all([
         api.get('/api/jobs'),
-        api.get('/api/applications/my')
+        api.get('/api/applications/my'),
+        api.get('/api/resume/my')
       ]);
       setJobs(jobsRes.data);
       setMyApps(appsRes.data);
+      setResume(resumeRes.data);
     } catch (err) {
       setError('Failed to load data.');
     } finally {
       setLoading(false);
+    }
+  }
+
+  // Handle resume file upload
+  async function handleResumeUpload(e) {
+    e.preventDefault();
+    setResumeMsg('');
+
+    const file = fileInputRef.current?.files?.[0];
+    if (!file) {
+      setResumeMsg('Please select a PDF file to upload.');
+      return;
+    }
+
+    // Client-side checks
+    if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+      setResumeMsg('Only PDF files are allowed.');
+      return;
+    }
+    if (file.size > 1024 * 1024) {
+      setResumeMsg('Resume must be under 1 MB.');
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('resume', file);
+
+    setUploading(true);
+    try {
+      const res = await api.post('/api/resume', formData);
+      setResume(res.data);
+      setResumeMsg('Resume uploaded successfully!');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    } catch (err) {
+      setResumeMsg(err.response?.data?.message || 'Failed to upload resume.');
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  // Open and view own resume PDF in new tab
+  async function handleViewResume(resumeId) {
+    try {
+      const res = await api.get(`/api/resumes/${resumeId}/file`, { responseType: 'blob' });
+      const fileURL = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+      window.open(fileURL, '_blank');
+    } catch (err) {
+      setResumeMsg(err.response?.data?.message || 'Failed to open resume.');
     }
   }
 
@@ -52,8 +106,62 @@ export default function StudentDashboard() {
 
   return (
     <div>
+      {/* My Resume Section */}
+      <h2>My Resume</h2>
+      {resumeMsg && (
+        <p className={resumeMsg.toLowerCase().includes('success') ? 'success-msg' : 'error-msg'}>
+          {resumeMsg}
+        </p>
+      )}
+
+      <div className="card" style={{ marginBottom: '1.5rem' }}>
+        {resume ? (
+          <div>
+            <p><strong>File:</strong> {resume.filename}</p>
+            <p><strong>Size:</strong> {(resume.size / 1024).toFixed(1)} KB</p>
+            <p>
+              <strong>Status:</strong>{' '}
+              <span className={`badge badge-${resume.status.toLowerCase()}`}>{resume.status}</span>
+            </p>
+            {resume.remarks && (
+              <p><strong>Admin Remarks:</strong> {resume.remarks}</p>
+            )}
+            <div style={{ marginTop: '0.75rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={() => handleViewResume(resume._id)}
+              >
+                View Resume
+              </button>
+            </div>
+          </div>
+        ) : (
+          <p>No resume uploaded yet. Please upload a PDF resume (max 1 MB) to apply for jobs.</p>
+        )}
+
+        <form onSubmit={handleResumeUpload} style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          <input
+            type="file"
+            accept="application/pdf"
+            ref={fileInputRef}
+            required
+          />
+          <button type="submit" className="btn btn-primary btn-sm" disabled={uploading}>
+            {uploading ? 'Uploading...' : (resume ? 'Re-upload Resume' : 'Upload Resume')}
+          </button>
+        </form>
+        <p className="hint" style={{ marginTop: '0.5rem', textAlign: 'left' }}>
+          Note: Max file size is 1 MB. Re-uploading resets review status to PENDING.
+        </p>
+      </div>
+
       <h2>Available Jobs</h2>
-      {applyMsg && <p className={applyMsg.includes('success') ? 'success-msg' : 'error-msg'}>{applyMsg}</p>}
+      {applyMsg && (
+        <p className={applyMsg.toLowerCase().includes('success') ? 'success-msg' : 'error-msg'}>
+          {applyMsg}
+        </p>
+      )}
 
       {jobs.length === 0 ? <p>No jobs posted yet.</p> : (
         <div className="card-grid">
@@ -96,3 +204,4 @@ export default function StudentDashboard() {
     </div>
   );
 }
+

@@ -2,10 +2,38 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { User, Job, Application } = require('./models');
+const multer = require('multer');
+const { User, Job, Application, Resume } = require('./models');
 const { protect, onlyAdmin } = require('./middleware');
 
 const router = express.Router();
+
+// Configure multer to store file in memory (max 1 MB)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype !== 'application/pdf') {
+      const err = new Error('Only PDF files are allowed.');
+      err.status = 400;
+      return cb(err, false);
+    }
+    cb(null, true);
+  }
+});
+
+// Middleware to handle multer upload and format errors
+function handleResumeUpload(req, res, next) {
+  upload.single('resume')(req, res, (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ message: 'Resume must be under 1 MB.' });
+      }
+      return res.status(400).json({ message: err.message || 'File upload error.' });
+    }
+    next();
+  });
+}
 
 // helper: create a JWT for a user
 function makeToken(user) {
@@ -115,6 +143,11 @@ router.post('/jobs/:id/apply', protect, async (req, res, next) => {
     if (req.user.cgpa < job.minCgpa) {
       return res.status(400).json({ message: `Minimum CGPA required is ${job.minCgpa}. Your CGPA is ${req.user.cgpa}.` });
     }
+    // check approved resume
+    const resume = await Resume.findOne({ user: req.user._id });
+    if (!resume || resume.status !== 'APPROVED') {
+      return res.status(400).json({ message: 'You must have an approved resume to apply for jobs.' });
+    }
     // check already applied
     const already = await Application.findOne({ user: req.user._id, job: job._id });
     if (already) {
@@ -163,4 +196,106 @@ router.put('/applications/:id/status', protect, onlyAdmin, async (req, res, next
   } catch (err) { next(err); }
 });
 
+// ---- Resumes: upload (student only, max 1MB, PDF only) ----
+router.post('/resume', protect, (req, res, next) => {
+  if (req.user.role !== 'STUDENT') {
+    return res.status(403).json({ message: 'Only students can upload resumes.' });
+  }
+  handleResumeUpload(req, res, async (err) => {
+    if (err) return next(err);
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: 'Please upload a resume file.' });
+      }
+      // verify PDF magic bytes (%PDF-)
+      if (!req.file.buffer || req.file.buffer.length < 5 || req.file.buffer.toString('utf-8', 0, 5) !== '%PDF-') {
+        return res.status(400).json({ message: 'File is not a valid PDF.' });
+      }
+
+      const resume = await Resume.findOneAndUpdate(
+        { user: req.user._id },
+        {
+          filename: req.file.originalname,
+          contentType: req.file.mimetype || 'application/pdf',
+          size: req.file.size,
+          data: req.file.buffer,
+          status: 'PENDING',
+          remarks: '',
+          reviewedBy: null,
+          reviewedAt: null
+        },
+        { new: true, upsert: true, setDefaultsOnInsert: true }
+      ).select('-data');
+
+      res.status(200).json(resume);
+    } catch (dbErr) {
+      next(dbErr);
+    }
+  });
+});
+
+// ---- Resumes: get current student's resume ----
+router.get('/resume/my', protect, async (req, res, next) => {
+  try {
+    const resume = await Resume.findOne({ user: req.user._id });
+    res.json(resume);
+  } catch (err) { next(err); }
+});
+
+// ---- Resumes: list all (admin only) ----
+router.get('/resumes', protect, onlyAdmin, async (req, res, next) => {
+  try {
+    const resumes = await Resume.find()
+      .populate('user', 'name email branch cgpa')
+      .sort({ createdAt: -1 });
+    res.json(resumes);
+  } catch (err) { next(err); }
+});
+
+// ---- Resumes: view/download PDF file (admin or owner only) ----
+router.get('/resumes/:id/file', protect, async (req, res, next) => {
+  try {
+    const resume = await Resume.findById(req.params.id).select('+data');
+    if (!resume) return res.status(404).json({ message: 'Resume not found.' });
+
+    const isOwner = resume.user.toString() === req.user._id.toString();
+    const isAdmin = req.user.role === 'ADMIN';
+    if (!isOwner && !isAdmin) {
+      return res.status(403).json({ message: 'Access denied.' });
+    }
+
+    res.setHeader('Content-Type', resume.contentType || 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${resume.filename || 'resume.pdf'}"`);
+    res.send(resume.data);
+  } catch (err) { next(err); }
+});
+
+// ---- Resumes: review/validate (admin only) ----
+router.put('/resumes/:id/review', protect, onlyAdmin, async (req, res, next) => {
+  try {
+    const { status, remarks } = req.body;
+    if (!['APPROVED', 'REJECTED'].includes(status)) {
+      return res.status(400).json({ message: 'Status must be APPROVED or REJECTED.' });
+    }
+    if (status === 'REJECTED' && (!remarks || !remarks.trim())) {
+      return res.status(400).json({ message: 'Remarks are required when rejecting a resume.' });
+    }
+
+    const resume = await Resume.findByIdAndUpdate(
+      req.params.id,
+      {
+        status,
+        remarks: remarks ? remarks.trim() : '',
+        reviewedBy: req.user._id,
+        reviewedAt: new Date()
+      },
+      { new: true }
+    ).populate('user', 'name email branch cgpa');
+
+    if (!resume) return res.status(404).json({ message: 'Resume not found.' });
+    res.json(resume);
+  } catch (err) { next(err); }
+});
+
 module.exports = router;
+

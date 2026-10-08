@@ -35,8 +35,27 @@ const applicationSchema = new mongoose.Schema({
 // one student can apply to a job only once
 applicationSchema.index({ user: 1, job: 1 }, { unique: true });
 
+// ---- Resume schema (uploaded by student, reviewed by admin) ----
+const resumeSchema = new mongoose.Schema({
+  user:        { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, unique: true },
+  filename:    { type: String, default: '' },
+  contentType: { type: String, default: 'application/pdf' },
+  size:        { type: Number, default: 0 },
+  data:        { type: Buffer, required: true, select: false },
+  status: {
+    type: String,
+    enum: ['PENDING', 'APPROVED', 'REJECTED'],
+    default: 'PENDING'
+  },
+  remarks:     { type: String, default: '' },
+  reviewedBy:  { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  reviewedAt:  { type: Date }
+}, { timestamps: true });
+
 module.exports = {
   User:        mongoose.model('User', userSchema),
   Job:         mongoose.model('Job', jobSchema),
-  Application: mongoose.model('Application', applicationSchema)
+  Application: mongoose.model('Application', applicationSchema),
+  Resume:      mongoose.model('Resume', resumeSchema)
 };
+
