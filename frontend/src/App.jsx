@@ -5,6 +5,7 @@ import Login from './pages/Login';
 import StudentDashboard from './pages/StudentDashboard';
 import AdminDashboard from './pages/AdminDashboard';
 import StudentProfile from './pages/StudentProfile';
+import ChangePassword from './pages/ChangePassword';
 
 // ProtectedRoute: only allows logged-in users with the right role
 function ProtectedRoute({ children, role }) {
@@ -39,6 +40,10 @@ function Navbar() {
             <Link to="/student/profile" className="nav-link">Profile</Link>
           </>
         )}
+        {user.role === 'ADMIN' && (
+          <Link to="/admin" className="nav-link">Dashboard</Link>
+        )}
+        <Link to="/change-password" className="nav-link">Change Password</Link>
         <span className="nav-user">{user.name} ({user.role})</span>
         <button onClick={handleLogout} className="btn btn-sm">Logout</button>
       </div>
@@ -67,6 +72,9 @@ function AppContent() {
           } />
           <Route path="/student/profile" element={
             <ProtectedRoute role="STUDENT"><StudentProfile /></ProtectedRoute>
+          } />
+          <Route path="/change-password" element={
+            <ProtectedRoute><ChangePassword /></ProtectedRoute>
           } />
           <Route path="/admin" element={
             <ProtectedRoute role="ADMIN"><AdminDashboard /></ProtectedRoute>

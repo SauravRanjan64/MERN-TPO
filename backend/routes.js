@@ -124,6 +124,49 @@ router.get('/auth/me', protect, (req, res) => {
   });
 });
 
+// ---- Auth: change password ----
+router.put('/auth/password', protect, async (req, res, next) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ message: 'Current password and new password are required.' });
+    }
+
+    // Load user WITH password hash (req.user from protect middleware has -password)
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+
+    // Check old password with bcrypt.compare (wrong -> 400, NOT 401 to prevent frontend auto-logout)
+    const isMatch = await bcrypt.compare(currentPassword, user.password);
+    if (!isMatch) {
+      return res.status(400).json({ message: 'Incorrect current password.' });
+    }
+
+    // New password validation: minimum 6 characters
+    if (typeof newPassword !== 'string' || newPassword.length < 6) {
+      return res.status(400).json({ message: 'New password must be at least 6 characters.' });
+    }
+
+    // New password must be different from current password
+    const isSame = await bcrypt.compare(newPassword, user.password);
+    if (isSame) {
+      return res.status(400).json({ message: 'New password must be different from your current password.' });
+    }
+
+    // Hash new password and save
+    user.password = await bcrypt.hash(newPassword, 10);
+    await user.save();
+
+    res.json({ message: 'Password changed successfully.' });
+  } catch (err) {
+    console.error('Change password failed:', err.message);
+    next(err);
+  }
+});
+
 // ===== PROFILE ROUTES =====
 // PUT /api/profile: update student branch, cgpa, phone, skills
 router.put('/profile', protect, async (req, res, next) => {
