@@ -1,16 +1,17 @@
 // Student view: resume management + available jobs + my applications
 import { useState, useEffect, useRef } from 'react';
 import api from '../api';
+import { useToast } from '../ToastContext';
+import Button from '../components/Button';
 
 export default function StudentDashboard() {
+  const { toast } = useToast();
   const [jobs, setJobs] = useState([]);
   const [myApps, setMyApps] = useState([]);
   const [resume, setResume] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [applyMsg, setApplyMsg] = useState('');    // success or error message after apply
-  const [resumeMsg, setResumeMsg] = useState('');  // success or error message for resume actions
   const [uploading, setUploading] = useState(false);
+  const [applyingJobId, setApplyingJobId] = useState(null);
   const fileInputRef = useRef(null);
 
   // Fetch jobs, applications, and current resume on mount
@@ -30,7 +31,7 @@ export default function StudentDashboard() {
       setMyApps(appsRes.data);
       setResume(resumeRes.data);
     } catch (err) {
-      setError('Failed to load data.');
+      toast.error('Failed to load data.');
     } finally {
       setLoading(false);
     }
@@ -39,21 +40,20 @@ export default function StudentDashboard() {
   // Handle resume file upload
   async function handleResumeUpload(e) {
     e.preventDefault();
-    setResumeMsg('');
 
     const file = fileInputRef.current?.files?.[0];
     if (!file) {
-      setResumeMsg('Please select a PDF file to upload.');
+      toast.error('Please select a PDF file to upload.');
       return;
     }
 
     // Client-side checks
     if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
-      setResumeMsg('Only PDF files are allowed.');
+      toast.error('Only PDF files are allowed.');
       return;
     }
     if (file.size > 1024 * 1024) {
-      setResumeMsg('Resume must be under 1 MB.');
+      toast.error('Resume must be under 1 MB.');
       return;
     }
 
@@ -64,10 +64,10 @@ export default function StudentDashboard() {
     try {
       const res = await api.post('/api/resume', formData);
       setResume(res.data);
-      setResumeMsg('Resume uploaded successfully!');
+      toast.success('Resume uploaded successfully!');
       if (fileInputRef.current) fileInputRef.current.value = '';
     } catch (err) {
-      setResumeMsg(err.response?.data?.message || 'Failed to upload resume.');
+      toast.error(err.response?.data?.message || 'Failed to upload resume.');
     } finally {
       setUploading(false);
     }
@@ -80,19 +80,21 @@ export default function StudentDashboard() {
       const fileURL = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
       window.open(fileURL, '_blank');
     } catch (err) {
-      setResumeMsg(err.response?.data?.message || 'Failed to open resume.');
+      toast.error(err.response?.data?.message || 'Failed to open resume.');
     }
   }
 
   // Apply to a job
   async function handleApply(jobId) {
-    setApplyMsg('');
+    setApplyingJobId(jobId);
     try {
       await api.post(`/api/jobs/${jobId}/apply`);
-      setApplyMsg('Applied successfully!');
+      toast.success('Applied successfully!');
       fetchData(); // refresh lists
     } catch (err) {
-      setApplyMsg(err.response?.data?.message || 'Failed to apply.');
+      toast.error(err.response?.data?.message || 'Failed to apply.');
+    } finally {
+      setApplyingJobId(null);
     }
   }
 
@@ -101,18 +103,12 @@ export default function StudentDashboard() {
     return myApps.some(app => app.job && app.job._id === jobId);
   }
 
-  if (loading) return <p className="center">Loading dashboard...</p>;
-  if (error) return <p className="error-msg center">{error}</p>;
+  if (loading) return <p className="center">Loading...</p>;
 
   return (
     <div>
       {/* My Resume Section */}
       <h2>My Resume</h2>
-      {resumeMsg && (
-        <p className={resumeMsg.toLowerCase().includes('success') ? 'success-msg' : 'error-msg'}>
-          {resumeMsg}
-        </p>
-      )}
 
       <div className="card" style={{ marginBottom: '1.5rem' }}>
         {resume ? (
@@ -147,9 +143,14 @@ export default function StudentDashboard() {
             ref={fileInputRef}
             required
           />
-          <button type="submit" className="btn btn-primary btn-sm" disabled={uploading}>
-            {uploading ? 'Uploading...' : (resume ? 'Re-upload Resume' : 'Upload Resume')}
-          </button>
+          <Button
+            type="submit"
+            className="btn btn-primary btn-sm"
+            loading={uploading}
+            loadingText="Uploading..."
+          >
+            {resume ? 'Re-upload Resume' : 'Upload Resume'}
+          </Button>
         </form>
         <p className="hint" style={{ marginTop: '0.5rem', textAlign: 'left' }}>
           Note: Max file size is 1 MB. Re-uploading resets review status to PENDING.
@@ -157,11 +158,6 @@ export default function StudentDashboard() {
       </div>
 
       <h2>Available Jobs</h2>
-      {applyMsg && (
-        <p className={applyMsg.toLowerCase().includes('success') ? 'success-msg' : 'error-msg'}>
-          {applyMsg}
-        </p>
-      )}
 
       {jobs.length === 0 ? <p>No jobs posted yet.</p> : (
         <div className="card-grid">
@@ -176,7 +172,14 @@ export default function StudentDashboard() {
               {alreadyApplied(job._id) ? (
                 <button className="btn btn-sm" disabled>Already Applied</button>
               ) : (
-                <button className="btn btn-primary btn-sm" onClick={() => handleApply(job._id)}>Apply</button>
+                <Button
+                  className="btn btn-primary btn-sm"
+                  loading={applyingJobId === job._id}
+                  loadingText="Applying..."
+                  onClick={() => handleApply(job._id)}
+                >
+                  Apply
+                </Button>
               )}
             </div>
           ))}

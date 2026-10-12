@@ -1,10 +1,13 @@
 // Student Profile page: view and update branch, CGPA, phone, and skills
 import { useState, useEffect } from 'react';
 import { useAuth } from '../AuthContext';
+import { useToast } from '../ToastContext';
+import Button from '../components/Button';
 import api from '../api';
 
 export default function StudentProfile() {
   const { user, updateUser } = useAuth();
+  const { toast } = useToast();
 
   const [form, setForm] = useState({
     branch: '',
@@ -13,8 +16,6 @@ export default function StudentProfile() {
     skillsInput: ''
   });
   const [submitting, setSubmitting] = useState(false);
-  const [errorMsg, setErrorMsg] = useState('');
-  const [successMsg, setSuccessMsg] = useState('');
 
   // Pre-fill form with current user details when component loads or user updates
   useEffect(() => {
@@ -36,26 +37,24 @@ export default function StudentProfile() {
   // Submit profile updates to backend API
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setErrorMsg('');
-    setSuccessMsg('');
 
     // Front-end check: branch must not be empty
     if (!form.branch.trim()) {
-      setErrorMsg('Branch cannot be empty.');
+      toast.error('Branch cannot be empty.');
       return;
     }
 
     // Front-end check: CGPA must be a number between 0 and 10
     const numCgpa = Number(form.cgpa);
     if (isNaN(numCgpa) || numCgpa < 0 || numCgpa > 10) {
-      setErrorMsg('CGPA must be between 0 and 10.');
+      toast.error('CGPA must be between 0 and 10.');
       return;
     }
 
     // Front-end check: phone should be empty or 10 digits
     const trimmedPhone = form.phone.trim();
     if (trimmedPhone !== '' && !/^\d{10}$/.test(trimmedPhone)) {
-      setErrorMsg('Phone must be empty or a 10-digit number.');
+      toast.error('Phone must be empty or a 10-digit number.');
       return;
     }
 
@@ -76,10 +75,10 @@ export default function StudentProfile() {
 
       // Update AuthContext so changes reflect everywhere in the app immediately
       updateUser(res.data.user);
-      setSuccessMsg('Profile updated successfully!');
+      toast.success('Profile updated successfully!');
     } catch (err) {
       console.error('Update profile failed:', err.message);
-      setErrorMsg(err.response?.data?.message || 'Failed to update profile.');
+      toast.error(err.response?.data?.message || 'Failed to update profile.');
     } finally {
       setSubmitting(false);
     }
@@ -90,9 +89,6 @@ export default function StudentProfile() {
       <div className="card profile-card">
         <h2>Student Profile</h2>
         <p className="hint">View and edit your academic and contact details.</p>
-
-        {errorMsg && <p className="error-msg">{errorMsg}</p>}
-        {successMsg && <p className="success-msg">{successMsg}</p>}
 
         <form onSubmit={handleSubmit} className="profile-form">
           <div className="form-group">
@@ -154,9 +150,14 @@ export default function StudentProfile() {
             />
           </div>
 
-          <button type="submit" className="btn btn-primary" disabled={submitting}>
-            {submitting ? 'Saving...' : 'Save Profile'}
-          </button>
+          <Button
+            type="submit"
+            className="btn btn-primary"
+            loading={submitting}
+            loadingText="Saving..."
+          >
+            Save Profile
+          </Button>
         </form>
       </div>
     </div>

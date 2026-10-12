@@ -1,13 +1,16 @@
 // Admin view: post jobs, see all jobs, manage applications, review resumes
 import { useState, useEffect } from 'react';
 import api from '../api';
+import { useToast } from '../ToastContext';
+import Button from '../components/Button';
 
 export default function AdminDashboard() {
+  const { toast } = useToast();
   const [jobs, setJobs] = useState([]);
   const [apps, setApps] = useState([]);
   const [resumes, setResumes] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [msg, setMsg] = useState('');
+  const [creatingJob, setCreatingJob] = useState(false);
 
   // Form for creating a new job
   const [jobForm, setJobForm] = useState({
@@ -28,7 +31,7 @@ export default function AdminDashboard() {
       setApps(appsRes.data);
       setResumes(resumesRes.data);
     } catch (err) {
-      setMsg('Failed to load data.');
+      toast.error('Failed to load data.');
     } finally {
       setLoading(false);
     }
@@ -37,18 +40,20 @@ export default function AdminDashboard() {
   // Create a new job
   async function handleCreateJob(e) {
     e.preventDefault();
-    setMsg('');
+    setCreatingJob(true);
     try {
       await api.post('/api/jobs', {
         ...jobForm,
         packageLPA: Number(jobForm.packageLPA) || 0,
         minCgpa: Number(jobForm.minCgpa) || 0
       });
-      setMsg('Job created!');
+      toast.success('Job created successfully!');
       setJobForm({ title: '', companyName: '', description: '', packageLPA: '', minCgpa: '', lastDate: '' });
       fetchData();
     } catch (err) {
-      setMsg(err.response?.data?.message || 'Failed to create job.');
+      toast.error(err.response?.data?.message || 'Failed to create job.');
+    } finally {
+      setCreatingJob(false);
     }
   }
 
@@ -57,9 +62,10 @@ export default function AdminDashboard() {
     if (!window.confirm('Delete this job?')) return;
     try {
       await api.delete(`/api/jobs/${id}`);
+      toast.success('Job deleted.');
       fetchData();
     } catch (err) {
-      setMsg('Failed to delete job.');
+      toast.error('Failed to delete job.');
     }
   }
 
@@ -67,9 +73,10 @@ export default function AdminDashboard() {
   async function handleStatusChange(appId, newStatus) {
     try {
       await api.put(`/api/applications/${appId}/status`, { status: newStatus });
+      toast.success('Status updated.');
       fetchData();
     } catch (err) {
-      setMsg('Failed to update status.');
+      toast.error('Failed to update status.');
     }
   }
 
@@ -80,7 +87,7 @@ export default function AdminDashboard() {
       const fileURL = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
       window.open(fileURL, '_blank');
     } catch (err) {
-      setMsg(err.response?.data?.message || 'Failed to open resume.');
+      toast.error(err.response?.data?.message || 'Failed to open resume.');
     }
   }
 
@@ -89,10 +96,10 @@ export default function AdminDashboard() {
     const remarks = window.prompt('Enter remarks (optional):', '') || '';
     try {
       await api.put(`/api/resumes/${resumeId}/review`, { status: 'APPROVED', remarks });
-      setMsg('Resume approved successfully.');
+      toast.success('Resume approved successfully.');
       fetchData();
     } catch (err) {
-      setMsg(err.response?.data?.message || 'Failed to approve resume.');
+      toast.error(err.response?.data?.message || 'Failed to approve resume.');
     }
   }
 
@@ -106,19 +113,18 @@ export default function AdminDashboard() {
     }
     try {
       await api.put(`/api/resumes/${resumeId}/review`, { status: 'REJECTED', remarks: remarks.trim() });
-      setMsg('Resume rejected.');
+      toast.success('Resume rejected.');
       fetchData();
     } catch (err) {
-      setMsg(err.response?.data?.message || 'Failed to reject resume.');
+      toast.error(err.response?.data?.message || 'Failed to reject resume.');
     }
   }
 
-  if (loading) return <p className="center">Loading dashboard...</p>;
+  if (loading) return <p className="center">Loading...</p>;
 
   return (
     <div>
       <h2>Post a New Job</h2>
-      {msg && <p className={msg.includes('created') || msg.includes('success') ? 'success-msg' : 'error-msg'}>{msg}</p>}
 
       <form className="job-form" onSubmit={handleCreateJob}>
         <input placeholder="Job Title" value={jobForm.title}
@@ -133,7 +139,14 @@ export default function AdminDashboard() {
           onChange={e => setJobForm({...jobForm, minCgpa: e.target.value})} />
         <input type="date" value={jobForm.lastDate}
           onChange={e => setJobForm({...jobForm, lastDate: e.target.value})} required />
-        <button type="submit" className="btn btn-primary">Create Job</button>
+        <Button
+          type="submit"
+          className="btn btn-primary"
+          loading={creatingJob}
+          loadingText="Creating..."
+        >
+          Create Job
+        </Button>
       </form>
 
       <h2>All Jobs</h2>

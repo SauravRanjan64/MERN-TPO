@@ -2,26 +2,29 @@
 import { useState } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
+import { useToast } from '../ToastContext';
+import Button from '../components/Button';
 
 export default function Login() {
   const { user, login, register } = useAuth();
+  const { toast } = useToast();
   const navigate = useNavigate();
 
   const [isRegister, setIsRegister] = useState(false); // toggle login/register
   const [form, setForm] = useState({ name: '', email: '', password: '', branch: '', cgpa: '' });
-  const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   // If already logged in, redirect
   if (user) return <Navigate to={user.role === 'ADMIN' ? '/admin' : '/student'} />;
 
+  // Handle input changes
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
 
+  // Submit login or register form
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
     setSubmitting(true);
     try {
       let loggedUser;
@@ -30,12 +33,14 @@ export default function Login() {
           name: form.name, email: form.email, password: form.password,
           branch: form.branch, cgpa: Number(form.cgpa) || 0
         });
+        toast.success('Registration successful! Welcome.');
       } else {
         loggedUser = await login(form.email, form.password);
+        toast.success(`Welcome back, ${loggedUser.name}!`);
       }
       navigate(loggedUser.role === 'ADMIN' ? '/admin' : '/student');
     } catch (err) {
-      setError(err.response?.data?.message || 'Something went wrong. Please try again.');
+      toast.error(err.response?.data?.message || 'Something went wrong. Please try again.');
     } finally {
       setSubmitting(false);
     }
@@ -68,11 +73,14 @@ export default function Login() {
           <input name="email" type="email" placeholder="Email" value={form.email} onChange={handleChange} required />
           <input name="password" type="password" placeholder="Password" value={form.password} onChange={handleChange} required />
 
-          {error && <p className="error-msg">{error}</p>}
-
-          <button type="submit" className="btn btn-primary btn-block" disabled={submitting}>
-            {submitting ? 'Please wait...' : (isRegister ? 'Register' : 'Login')}
-          </button>
+          <Button
+            type="submit"
+            className="btn btn-primary btn-block"
+            loading={submitting}
+            loadingText="Please wait..."
+          >
+            {isRegister ? 'Register' : 'Login'}
+          </Button>
 
           {submitting && (
             <p className="hint">Server may take up to a minute to wake up on first try.</p>
@@ -81,7 +89,7 @@ export default function Login() {
 
         <p className="toggle-text">
           {isRegister ? 'Already have an account?' : "Don't have an account?"}{' '}
-          <button type="button" className="link-btn" onClick={() => { setIsRegister(!isRegister); setError(''); }}>
+          <button type="button" className="link-btn" onClick={() => setIsRegister(!isRegister)}>
             {isRegister ? 'Login' : 'Register'}
           </button>
         </p>
