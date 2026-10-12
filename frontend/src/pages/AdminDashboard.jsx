@@ -73,7 +73,7 @@ export default function AdminDashboard() {
   async function handleStatusChange(appId, newStatus) {
     try {
       await api.put(`/api/applications/${appId}/status`, { status: newStatus });
-      toast.success('Status updated.');
+      toast.success('Status updated. Student has been emailed.');
       fetchData();
     } catch (err) {
       toast.error('Failed to update status.');
@@ -96,7 +96,7 @@ export default function AdminDashboard() {
     const remarks = window.prompt('Enter remarks (optional):', '') || '';
     try {
       await api.put(`/api/resumes/${resumeId}/review`, { status: 'APPROVED', remarks });
-      toast.success('Resume approved successfully.');
+      toast.success('Resume approved. Student has been emailed.');
       fetchData();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to approve resume.');
@@ -113,7 +113,7 @@ export default function AdminDashboard() {
     }
     try {
       await api.put(`/api/resumes/${resumeId}/review`, { status: 'REJECTED', remarks: remarks.trim() });
-      toast.success('Resume rejected.');
+      toast.success('Resume rejected. Student has been emailed.');
       fetchData();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to reject resume.');

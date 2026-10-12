@@ -481,13 +481,38 @@ router.put('/applications/:id/status', protect, onlyAdmin, async (req, res, next
     if (!valid.includes(status)) {
       return res.status(400).json({ message: `Status must be one of: ${valid.join(', ')}` });
     }
-    const app = await Application.findByIdAndUpdate(
-      req.params.id,
-      { status },
-      { new: true }
-    ).populate('user', 'name email branch cgpa').populate('job', 'title companyName');
-    if (!app) return res.status(404).json({ message: 'Application not found.' });
-    res.json(app);
+
+    // Load existing application to verify old status and get student & job details
+    const existingApp = await Application.findById(req.params.id)
+      .populate('user', 'name email branch cgpa')
+      .populate('job', 'title companyName');
+
+    if (!existingApp) return res.status(404).json({ message: 'Application not found.' });
+
+    const oldStatus = existingApp.status;
+    existingApp.status = status;
+    const updatedApp = await existingApp.save();
+
+    // ONLY if the status actually changed, send an email to the student (unawaited & caught)
+    if (oldStatus !== status && existingApp.user?.email) {
+      const studentName = existingApp.user.name;
+      const jobTitle = existingApp.job?.title || 'Job';
+      const companyName = existingApp.job?.companyName || 'Company';
+
+      const emailSubject = `Application Update: ${jobTitle} at ${companyName} - ${status}`;
+      const emailBody = `Hello ${studentName},\n\nYour application status for the position of "${jobTitle}" at "${companyName}" has been updated to: ${status}.\n\nPlease log in to the DCRUST Placement Portal to view the full details.\n\nBest regards,\nTraining & Placement Cell, DCRUST`;
+
+      // Non-blocking fire-and-forget: mail problem will never fail the status update
+      sendMail({
+        to: existingApp.user.email,
+        subject: emailSubject,
+        text: emailBody
+      }).catch((mailErr) => {
+        console.error('Failed to send status update email:', mailErr.message);
+      });
+    }
+
+    res.json(updatedApp);
   } catch (err) { next(err); }
 });
 
@@ -576,19 +601,39 @@ router.put('/resumes/:id/review', protect, onlyAdmin, async (req, res, next) => 
       return res.status(400).json({ message: 'Remarks are required when rejecting a resume.' });
     }
 
-    const resume = await Resume.findByIdAndUpdate(
-      req.params.id,
-      {
-        status,
-        remarks: remarks ? remarks.trim() : '',
-        reviewedBy: req.user._id,
-        reviewedAt: new Date()
-      },
-      { new: true }
-    ).populate('user', 'name email branch cgpa');
+    // Load existing resume to check old status
+    const existingResume = await Resume.findById(req.params.id).populate('user', 'name email branch cgpa');
+    if (!existingResume) return res.status(404).json({ message: 'Resume not found.' });
 
-    if (!resume) return res.status(404).json({ message: 'Resume not found.' });
-    res.json(resume);
+    const oldStatus = existingResume.status;
+    const cleanRemarks = remarks ? remarks.trim() : '';
+
+    existingResume.status = status;
+    existingResume.remarks = cleanRemarks;
+    existingResume.reviewedBy = req.user._id;
+    existingResume.reviewedAt = new Date();
+    const savedResume = await existingResume.save();
+
+    // If status changed, send email to student (non-blocking)
+    if (oldStatus !== status && existingResume.user?.email) {
+      const studentName = existingResume.user.name;
+      const emailSubject = `Resume Review Update: ${status}`;
+      let emailBody = `Hello ${studentName},\n\nYour uploaded resume has been reviewed by the Placement Cell.\nStatus: ${status}`;
+      if (cleanRemarks) {
+        emailBody += `\nRemarks: ${cleanRemarks}`;
+      }
+      emailBody += `\n\nPlease log in to the DCRUST Placement Portal for details.\n\nBest regards,\nTraining & Placement Cell, DCRUST`;
+
+      sendMail({
+        to: existingResume.user.email,
+        subject: emailSubject,
+        text: emailBody
+      }).catch((mailErr) => {
+        console.error('Failed to send resume review email:', mailErr.message);
+      });
+    }
+
+    res.json(savedResume);
   } catch (err) { next(err); }
 });
 
