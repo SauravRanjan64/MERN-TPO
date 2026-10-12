@@ -4,11 +4,17 @@ const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const multer = require('multer');
+const mongoose = require('mongoose');
 const { User, Job, Application, Resume } = require('./models');
 const { protect, onlyAdmin } = require('./middleware');
 const { sendMail } = require('./mailer');
 
 const router = express.Router();
+
+// Returns true if id is a valid MongoDB ObjectId (prevents 500 CastErrors)
+function isValidId(id) {
+  return mongoose.isValidObjectId(id);
+}
 
 // Configure multer to store file in memory (max 1 MB)
 const upload = multer({
@@ -197,16 +203,12 @@ router.post('/auth/forgot-password', async (req, res, next) => {
 
       const emailText = `Hello ${user.name},\n\nYou requested a password reset for your DCRUST Placement Portal account.\n\nPlease click the link below or paste it into your browser to set a new password:\n${resetLink}\n\nThis link is valid for 1 hour.\n\nIf you did not request this, please ignore this email and your password will remain unchanged.`;
 
-      // Send mail (or log to console if SMTP env missing)
-      try {
-        await sendMail({
-          to: user.email,
-          subject: 'DCRUST Placement Portal - Password Reset',
-          text: emailText
-        });
-      } catch (mailErr) {
-        console.error('Failed to send reset email:', mailErr.message);
-      }
+      // Send mail without await so response time is identical whether email exists or not
+      sendMail({
+        to: user.email,
+        subject: 'DCRUST Placement Portal - Password Reset',
+        text: emailText
+      }).catch(err => console.error('Reset mail failed:', err.message));
     }
 
     // ALWAYS reply with the exact same message whether or not email exists
@@ -387,20 +389,35 @@ router.post('/jobs', protect, onlyAdmin, async (req, res, next) => {
       return res.status(400).json({ message: 'Title, company name and last date are required.' });
     }
 
-    // Treat date like "2026-10-20" as the end of that day (23:59:59.999 IST, UTC+05:30)
+    // Validate packageLPA: must be a number >= 0 (defaults to 0 if omitted)
+    const numPackage = packageLPA === undefined || packageLPA === '' ? 0 : Number(packageLPA);
+    if (isNaN(numPackage) || numPackage < 0) {
+      return res.status(400).json({ message: 'packageLPA must be a number >= 0.' });
+    }
+
+    // Validate minCgpa: must be a number between 0 and 10 (defaults to 0 if omitted)
+    const numCgpa = minCgpa === undefined || minCgpa === '' ? 0 : Number(minCgpa);
+    if (isNaN(numCgpa) || numCgpa < 0 || numCgpa > 10) {
+      return res.status(400).json({ message: 'minCgpa must be a number between 0 and 10.' });
+    }
+
+    // Validate lastDate: treat YYYY-MM-DD string as end of that day (IST), otherwise parse normally
     let parsedLastDate;
     if (typeof lastDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(lastDate)) {
       parsedLastDate = new Date(`${lastDate}T23:59:59.999+05:30`);
     } else {
       parsedLastDate = new Date(lastDate);
     }
+    if (isNaN(parsedLastDate.getTime())) {
+      return res.status(400).json({ message: 'lastDate must be a valid date.' });
+    }
 
     const job = await Job.create({
       title,
       companyName,
       description,
-      packageLPA,
-      minCgpa,
+      packageLPA: numPackage,
+      minCgpa: numCgpa,
       lastDate: parsedLastDate
     });
     res.status(201).json(job);
@@ -413,6 +430,7 @@ router.post('/jobs', protect, onlyAdmin, async (req, res, next) => {
 // ---- Jobs: delete (admin only) ----
 router.delete('/jobs/:id', protect, onlyAdmin, async (req, res, next) => {
   try {
+    if (!isValidId(req.params.id)) return res.status(400).json({ message: 'Invalid id.' });
     const job = await Job.findByIdAndDelete(req.params.id);
     if (!job) return res.status(404).json({ message: 'Job not found.' });
     // also remove all applications for this job
@@ -424,6 +442,7 @@ router.delete('/jobs/:id', protect, onlyAdmin, async (req, res, next) => {
 // ---- Jobs: student applies ----
 router.post('/jobs/:id/apply', protect, async (req, res, next) => {
   try {
+    if (!isValidId(req.params.id)) return res.status(400).json({ message: 'Invalid id.' });
     if (req.user.role !== 'STUDENT') {
       return res.status(403).json({ message: 'Only students can apply.' });
     }
@@ -462,20 +481,11 @@ router.get('/applications/my', protect, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// ---- Applications: all (admin) ----
-router.get('/applications', protect, onlyAdmin, async (req, res, next) => {
-  try {
-    const apps = await Application.find()
-      .populate('user', 'name email branch cgpa')
-      .populate('job', 'title companyName')
-      .sort({ createdAt: -1 });
-    res.json(apps);
-  } catch (err) { next(err); }
-});
 
 // ---- Applications: admin updates status ----
 router.put('/applications/:id/status', protect, onlyAdmin, async (req, res, next) => {
   try {
+    if (!isValidId(req.params.id)) return res.status(400).json({ message: 'Invalid id.' });
     const { status } = req.body;
     const valid = ['APPLIED', 'SHORTLISTED', 'SELECTED', 'REJECTED'];
     if (!valid.includes(status)) {
@@ -575,6 +585,7 @@ router.get('/resumes', protect, onlyAdmin, async (req, res, next) => {
 // ---- Resumes: view/download PDF file (admin or owner only) ----
 router.get('/resumes/:id/file', protect, async (req, res, next) => {
   try {
+    if (!isValidId(req.params.id)) return res.status(400).json({ message: 'Invalid id.' });
     const resume = await Resume.findById(req.params.id).select('+data');
     if (!resume) return res.status(404).json({ message: 'Resume not found.' });
 
@@ -593,6 +604,7 @@ router.get('/resumes/:id/file', protect, async (req, res, next) => {
 // ---- Resumes: review/validate (admin only) ----
 router.put('/resumes/:id/review', protect, onlyAdmin, async (req, res, next) => {
   try {
+    if (!isValidId(req.params.id)) return res.status(400).json({ message: 'Invalid id.' });
     const { status, remarks } = req.body;
     if (!['APPROVED', 'REJECTED'].includes(status)) {
       return res.status(400).json({ message: 'Status must be APPROVED or REJECTED.' });
@@ -737,6 +749,7 @@ router.get('/admin/applications', protect, onlyAdmin, async (req, res, next) => 
 
     // Filter by specific job
     if (jobId) {
+      if (!isValidId(jobId)) return res.status(400).json({ message: 'Invalid id.' });
       query.job = jobId;
     }
 
@@ -925,6 +938,7 @@ router.get('/admin/export/applications', protect, onlyAdmin, async (req, res, ne
 
     // Filter by job
     if (jobId) {
+      if (!isValidId(jobId)) return res.status(400).json({ message: 'Invalid id.' });
       query.job = jobId;
     }
 

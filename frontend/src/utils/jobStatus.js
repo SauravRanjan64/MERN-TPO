@@ -8,25 +8,32 @@ export function getDeadlineInfo(lastDate) {
 
   const deadline = new Date(lastDate);
   const now = new Date();
-  const diffMs = deadline.getTime() - now.getTime();
 
-  // If the deadline has already passed
-  if (diffMs <= 0) {
+  // If the actual deadline moment has already passed, show Expired
+  if (deadline.getTime() <= now.getTime()) {
     return { label: 'Expired', color: 'danger', isExpired: true };
   }
 
-  // Calculate remaining days rounded up
-  const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+  // Compare calendar days: strip time by setting both dates to midnight local time
+  const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const deadlineMidnight = new Date(deadline.getFullYear(), deadline.getMonth(), deadline.getDate());
 
-  if (diffDays <= 1) {
+  // days = whole calendar days between today midnight and deadline midnight
+  const days = Math.round((deadlineMidnight - todayMidnight) / 86400000);
+
+  if (days === 0) {
     return { label: 'Closing today', color: 'warning', isExpired: false };
   }
 
-  if (diffDays <= 3) {
-    return { label: `Closing in ${diffDays} days`, color: 'warning', isExpired: false };
+  if (days === 1) {
+    return { label: 'Closing in 1 day', color: 'warning', isExpired: false };
   }
 
-  return { label: `${diffDays} days left`, color: 'info', isExpired: false };
+  if (days <= 3) {
+    return { label: `Closing in ${days} days`, color: 'warning', isExpired: false };
+  }
+
+  return { label: `${days} days left`, color: 'info', isExpired: false };
 }
 
 // Checks if the student meets the job's minimum CGPA requirement

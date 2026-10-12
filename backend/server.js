@@ -55,6 +55,14 @@ app.use('/api', routes);
 // ---- Global error handler (always returns JSON) ----
 app.use((err, req, res, next) => {
   console.error('Server error:', err.message);
+  // Return 400 for invalid MongoDB ObjectId or value (CastError)
+  if (err.name === 'CastError') {
+    return res.status(400).json({ message: 'Invalid id or value.' });
+  }
+  // Return 400 for Mongoose schema validation failures (ValidationError)
+  if (err.name === 'ValidationError') {
+    return res.status(400).json({ message: err.message });
+  }
   res.status(err.status || 500).json({ message: err.message || 'Internal server error' });
 });
 
