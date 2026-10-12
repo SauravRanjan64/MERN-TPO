@@ -637,5 +637,161 @@ router.put('/resumes/:id/review', protect, onlyAdmin, async (req, res, next) => 
   } catch (err) { next(err); }
 });
 
+// ===== ADMIN PAGINATION & SEARCH ROUTES =====
+
+// GET /api/admin/jobs: paginated jobs list with search
+router.get('/admin/jobs', protect, onlyAdmin, async (req, res, next) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 10));
+    const skip = (page - 1) * limit;
+    const search = (req.query.search || '').trim();
+
+    const query = {};
+    if (search) {
+      const safeSearch = escapeRegex(search);
+      query.$or = [
+        { title: { $regex: safeSearch, $options: 'i' } },
+        { companyName: { $regex: safeSearch, $options: 'i' } }
+      ];
+    }
+
+    const [total, data] = await Promise.all([
+      Job.countDocuments(query),
+      Job.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit)
+    ]);
+
+    const totalPages = Math.ceil(total / limit) || 1;
+
+    res.json({
+      data,
+      total,
+      page,
+      limit,
+      totalPages
+    });
+  } catch (err) {
+    console.error('Admin list jobs failed:', err.message);
+    next(err);
+  }
+});
+
+// GET /api/admin/students: paginated students list with search
+router.get('/admin/students', protect, onlyAdmin, async (req, res, next) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 10));
+    const skip = (page - 1) * limit;
+    const search = (req.query.search || '').trim();
+
+    const query = { role: 'STUDENT' };
+    if (search) {
+      const safeSearch = escapeRegex(search);
+      query.$or = [
+        { name: { $regex: safeSearch, $options: 'i' } },
+        { email: { $regex: safeSearch, $options: 'i' } },
+        { branch: { $regex: safeSearch, $options: 'i' } }
+      ];
+    }
+
+    const [total, students] = await Promise.all([
+      User.countDocuments(query),
+      User.find(query)
+        .select('-password')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+    ]);
+
+    const totalPages = Math.ceil(total / limit) || 1;
+
+    res.json({
+      data: students,
+      total,
+      page,
+      limit,
+      totalPages
+    });
+  } catch (err) {
+    console.error('Admin list students failed:', err.message);
+    next(err);
+  }
+});
+
+// GET /api/admin/applications: paginated applications with search, status, and jobId filters
+router.get('/admin/applications', protect, onlyAdmin, async (req, res, next) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 10));
+    const skip = (page - 1) * limit;
+    const search = (req.query.search || '').trim();
+    const status = (req.query.status || '').trim();
+    const jobId = (req.query.jobId || '').trim();
+
+    const query = {};
+
+    // Filter by application status
+    if (status && status !== 'ALL') {
+      query.status = status;
+    }
+
+    // Filter by specific job
+    if (jobId) {
+      query.job = jobId;
+    }
+
+    // Because student/job details live in separate collections, find matching IDs first
+    if (search) {
+      const safeSearch = escapeRegex(search);
+      const [matchingUsers, matchingJobs] = await Promise.all([
+        User.find({
+          $or: [
+            { name: { $regex: safeSearch, $options: 'i' } },
+            { email: { $regex: safeSearch, $options: 'i' } },
+            { branch: { $regex: safeSearch, $options: 'i' } }
+          ]
+        }).select('_id'),
+        Job.find({
+          $or: [
+            { title: { $regex: safeSearch, $options: 'i' } },
+            { companyName: { $regex: safeSearch, $options: 'i' } }
+          ]
+        }).select('_id')
+      ]);
+
+      const userIds = matchingUsers.map((u) => u._id);
+      const jobIds = matchingJobs.map((j) => j._id);
+
+      query.$or = [
+        { user: { $in: userIds } },
+        { job: { $in: jobIds } }
+      ];
+    }
+
+    const [total, data] = await Promise.all([
+      Application.countDocuments(query),
+      Application.find(query)
+        .populate('user', 'name email branch cgpa phone skills')
+        .populate('job', 'title companyName packageLPA minCgpa lastDate')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+    ]);
+
+    const totalPages = Math.ceil(total / limit) || 1;
+
+    res.json({
+      data,
+      total,
+      page,
+      limit,
+      totalPages
+    });
+  } catch (err) {
+    console.error('Admin list applications failed:', err.message);
+    next(err);
+  }
+});
+
 module.exports = router;
 
