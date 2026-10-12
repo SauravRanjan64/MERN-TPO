@@ -1,0 +1,350 @@
+{
+  "info": {
+    "_postman_id": "dcrust-placement-resume-api",
+    "name": "DCRUST Placement Portal - Resume & Job API",
+    "description": "Postman Collection for testing Resume Upload + Admin Validation feature & Job Application gate",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5000/api",
+      "type": "string"
+    },
+    {
+      "key": "studentToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "adminToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "resumeId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "jobId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Auth",
+      "item": [
+        {
+          "name": "1.1 Login as Admin",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.token) {",
+                  "    pm.collectionVariables.set('adminToken', json.token);",
+                  "    console.log('Saved adminToken');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@dcrust.com\",\n  \"password\": \"admin123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "1.2 Login as Student",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.token) {",
+                  "    pm.collectionVariables.set('studentToken', json.token);",
+                  "    console.log('Saved studentToken');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"rahul@student.com\",\n  \"password\": \"pass123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "login"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Resume APIs",
+      "item": [
+        {
+          "name": "2.1 Upload Resume (Student - Form Data)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json._id) {",
+                  "    pm.collectionVariables.set('resumeId', json._id);",
+                  "    console.log('Saved resumeId:', json._id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{studentToken}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "resume",
+                  "type": "file",
+                  "description": "Select a PDF file < 1MB"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/resume",
+              "host": ["{{baseUrl}}"],
+              "path": ["resume"]
+            },
+            "description": "Upload a PDF resume. Max size 1 MB."
+          }
+        },
+        {
+          "name": "2.2 Get My Resume (Student)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{studentToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/resume/my",
+              "host": ["{{baseUrl}}"],
+              "path": ["resume", "my"]
+            }
+          }
+        },
+        {
+          "name": "2.3 Get All Resumes (Admin Only)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (Array.isArray(json) && json.length > 0) {",
+                  "    pm.collectionVariables.set('resumeId', json[0]._id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/resumes",
+              "host": ["{{baseUrl}}"],
+              "path": ["resumes"]
+            }
+          }
+        },
+        {
+          "name": "2.4 View Resume File (Owner or Admin)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{studentToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/resumes/{{resumeId}}/file",
+              "host": ["{{baseUrl}}"],
+              "path": ["resumes", "{{resumeId}}", "file"]
+            },
+            "description": "Streams PDF buffer inline. In Postman, check the response Preview tab to see rendered PDF or raw bytes."
+          }
+        },
+        {
+          "name": "2.5 Reject Resume with Remarks (Admin)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"REJECTED\",\n  \"remarks\": \"Please format education and project details.\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/resumes/{{resumeId}}/review",
+              "host": ["{{baseUrl}}"],
+              "path": ["resumes", "{{resumeId}}", "review"]
+            }
+          }
+        },
+        {
+          "name": "2.6 Approve Resume (Admin)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"APPROVED\",\n  \"remarks\": \"Verified and approved.\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/resumes/{{resumeId}}/review",
+              "host": ["{{baseUrl}}"],
+              "path": ["resumes", "{{resumeId}}", "review"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Jobs & Application Gate",
+      "item": [
+        {
+          "name": "3.1 List Jobs (Get Job ID)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (Array.isArray(json) && json.length > 0) {",
+                  "    pm.collectionVariables.set('jobId', json[0]._id);",
+                  "    console.log('Saved jobId:', json[0]._id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{studentToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/jobs",
+              "host": ["{{baseUrl}}"],
+              "path": ["jobs"]
+            }
+          }
+        },
+        {
+          "name": "3.2 Apply for Job (Requires APPROVED Resume)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{studentToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/jobs/{{jobId}}/apply",
+              "host": ["{{baseUrl}}"],
+              "path": ["jobs", "{{jobId}}", "apply"]
+            },
+            "description": "If resume is PENDING or REJECTED, returns 400: 'You must have an approved resume to apply for jobs.'. If APPROVED, returns 201."
+          }
+        },
+        {
+          "name": "3.3 View My Applications",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{studentToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/applications/my",
+              "host": ["{{baseUrl}}"],
+              "path": ["applications", "my"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

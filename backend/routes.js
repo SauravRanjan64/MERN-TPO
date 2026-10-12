@@ -64,7 +64,16 @@ router.post('/auth/register', async (req, res, next) => {
     const token = makeToken(user);
     res.status(201).json({
       token,
-      user: { id: user._id, name: user.name, email: user.email, role: user.role }
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        branch: user.branch,
+        cgpa: user.cgpa,
+        phone: user.phone || '',
+        skills: user.skills || []
+      }
     });
   } catch (err) { next(err); }
 });
@@ -85,14 +94,119 @@ router.post('/auth/login', async (req, res, next) => {
     const token = makeToken(user);
     res.json({
       token,
-      user: { id: user._id, name: user.name, email: user.email, role: user.role }
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        branch: user.branch,
+        cgpa: user.cgpa,
+        phone: user.phone || '',
+        skills: user.skills || []
+      }
     });
   } catch (err) { next(err); }
 });
 
 // ---- Auth: get current user ----
 router.get('/auth/me', protect, (req, res) => {
-  res.json({ user: req.user });
+  res.json({
+    user: {
+      id: req.user._id,
+      name: req.user.name,
+      email: req.user.email,
+      role: req.user.role,
+      branch: req.user.branch,
+      cgpa: req.user.cgpa,
+      phone: req.user.phone || '',
+      skills: req.user.skills || []
+    }
+  });
+});
+
+// ===== PROFILE ROUTES =====
+// PUT /api/profile: update student branch, cgpa, phone, skills
+router.put('/profile', protect, async (req, res, next) => {
+  try {
+    // Only students can update student profile
+    if (req.user.role !== 'STUDENT') {
+      return res.status(403).json({ message: 'Only students can update profile.' });
+    }
+
+    const { branch, cgpa, phone, skills } = req.body;
+    const updates = {};
+
+    // Validate branch if provided
+    if (branch !== undefined) {
+      if (typeof branch !== 'string' || !branch.trim()) {
+        return res.status(400).json({ message: 'Branch cannot be empty.' });
+      }
+      updates.branch = branch.trim();
+    }
+
+    // Validate CGPA if provided
+    if (cgpa !== undefined) {
+      const numCgpa = Number(cgpa);
+      if (isNaN(numCgpa) || numCgpa < 0 || numCgpa > 10) {
+        return res.status(400).json({ message: 'CGPA must be between 0 and 10.' });
+      }
+      updates.cgpa = numCgpa;
+    }
+
+    // Validate phone if provided (either empty string or 10-digit number)
+    if (phone !== undefined) {
+      const trimmedPhone = String(phone).trim();
+      if (trimmedPhone !== '' && !/^\d{10}$/.test(trimmedPhone)) {
+        return res.status(400).json({ message: 'Phone must be empty or a 10-digit number.' });
+      }
+      updates.phone = trimmedPhone;
+    }
+
+    // Validate skills if provided (array of short strings, no duplicates)
+    if (skills !== undefined) {
+      if (!Array.isArray(skills)) {
+        return res.status(400).json({ message: 'Skills must be an array of strings.' });
+      }
+      const cleanedSkills = [];
+      for (const item of skills) {
+        if (typeof item !== 'string') {
+          return res.status(400).json({ message: 'Each skill must be a string.' });
+        }
+        const trimmed = item.trim();
+        if (!trimmed) continue;
+        if (trimmed.length > 50) {
+          return res.status(400).json({ message: 'Each skill must be 50 characters or less.' });
+        }
+        if (!cleanedSkills.includes(trimmed)) {
+          cleanedSkills.push(trimmed);
+        }
+      }
+      updates.skills = cleanedSkills;
+    }
+
+    // Save updates to database
+    const updatedUser = await User.findByIdAndUpdate(
+      req.user._id,
+      updates,
+      { new: true, runValidators: true }
+    ).select('-password');
+
+    res.json({
+      user: {
+        id: updatedUser._id,
+        name: updatedUser.name,
+        email: updatedUser.email,
+        role: updatedUser.role,
+        branch: updatedUser.branch,
+        cgpa: updatedUser.cgpa,
+        phone: updatedUser.phone || '',
+        skills: updatedUser.skills || []
+      }
+    });
+  } catch (err) {
+    console.error('Update profile failed:', err.message);
+    next(err);
+  }
 });
 
 // ---- Jobs: list all (any logged-in user) ----

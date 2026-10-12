@@ -8,7 +8,9 @@ const userSchema = new mongoose.Schema({
   password: { type: String, required: true },           // hashed with bcryptjs
   role:     { type: String, enum: ['STUDENT', 'ADMIN'], default: 'STUDENT' },
   branch:   { type: String, default: '' },
-  cgpa:     { type: Number, default: 0 }
+  cgpa:     { type: Number, default: 0 },
+  phone:    { type: String, default: '' },
+  skills:   { type: [String], default: [] }
 }, { timestamps: true });
 
 // ---- Job schema (posted by admin) ----

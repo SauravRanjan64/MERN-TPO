@@ -39,6 +39,11 @@ export function AuthProvider({ children }) {
     return res.data.user;
   };
 
+  // Update user state (used when profile is edited)
+  const updateUser = (updatedUserData) => {
+    setUser(updatedUserData);
+  };
+
   // Logout: clear everything
   const logout = () => {
     localStorage.removeItem('token');
@@ -46,7 +51,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, register, logout, updateUser }}>
       {children}
     </AuthContext.Provider>
   );

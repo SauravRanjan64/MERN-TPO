@@ -1,9 +1,9 @@
-// Main app: routing, navbar, protected routes
 import { BrowserRouter, Routes, Route, Navigate, Link, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './AuthContext';
 import Login from './pages/Login';
 import StudentDashboard from './pages/StudentDashboard';
 import AdminDashboard from './pages/AdminDashboard';
+import StudentProfile from './pages/StudentProfile';
 
 // ProtectedRoute: only allows logged-in users with the right role
 function ProtectedRoute({ children, role }) {
@@ -32,6 +32,12 @@ function Navbar() {
     <nav className="navbar">
       <Link to="/" className="nav-brand">DCRUST Placement Portal</Link>
       <div className="nav-right">
+        {user.role === 'STUDENT' && (
+          <>
+            <Link to="/student" className="nav-link">Dashboard</Link>
+            <Link to="/student/profile" className="nav-link">Profile</Link>
+          </>
+        )}
         <span className="nav-user">{user.name} ({user.role})</span>
         <button onClick={handleLogout} className="btn btn-sm">Logout</button>
       </div>
@@ -57,6 +63,9 @@ function AppContent() {
           <Route path="/login" element={<Login />} />
           <Route path="/student" element={
             <ProtectedRoute role="STUDENT"><StudentDashboard /></ProtectedRoute>
+          } />
+          <Route path="/student/profile" element={
+            <ProtectedRoute role="STUDENT"><StudentProfile /></ProtectedRoute>
           } />
           <Route path="/admin" element={
             <ProtectedRoute role="ADMIN"><AdminDashboard /></ProtectedRoute>
