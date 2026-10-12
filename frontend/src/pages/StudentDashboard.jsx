@@ -1,11 +1,14 @@
 // Student view: resume management + available jobs + my applications
 import { useState, useEffect, useRef, useCallback } from 'react';
 import api from '../api';
+import { useAuth } from '../AuthContext';
 import { useToast } from '../ToastContext';
 import Button from '../components/Button';
 import useDebounce from '../hooks/useDebounce';
+import { getDeadlineInfo, getEligibility } from '../utils/jobStatus';
 
 export default function StudentDashboard() {
+  const { user } = useAuth();
   const { toast } = useToast();
   const [jobs, setJobs] = useState([]);
   const [myApps, setMyApps] = useState([]);
@@ -265,28 +268,57 @@ export default function StudentDashboard() {
         <p className="no-data-msg">No jobs match your search or filters.</p>
       ) : (
         <div className="card-grid">
-          {jobs.map(job => (
-            <div key={job._id} className="card">
-              <h3>{job.title}</h3>
-              <p><strong>Company:</strong> {job.companyName}</p>
-              <p><strong>Package:</strong> {job.packageLPA} LPA</p>
-              <p><strong>Min CGPA:</strong> {job.minCgpa}</p>
-              <p><strong>Last Date:</strong> {new Date(job.lastDate).toLocaleDateString()}</p>
-              {job.description && <p>{job.description}</p>}
-              {alreadyApplied(job._id) ? (
-                <button className="btn btn-sm" disabled>Already Applied</button>
-              ) : (
-                <Button
-                  className="btn btn-primary btn-sm"
-                  loading={applyingJobId === job._id}
-                  loadingText="Applying..."
-                  onClick={() => handleApply(job._id)}
-                >
-                  Apply
-                </Button>
-              )}
-            </div>
-          ))}
+          {jobs.map(job => {
+            const deadline = getDeadlineInfo(job.lastDate);
+            const eligibility = getEligibility(user, job);
+            const isApplied = alreadyApplied(job._id);
+            const cannotApply = isApplied || deadline.isExpired || !eligibility.eligible;
+
+            return (
+              <div key={job._id} className="card job-card">
+                <div className="job-card-header">
+                  <h3>{job.title}</h3>
+                  <div className="pill-group">
+                    <span className={`pill pill-${deadline.color}`}>
+                      {deadline.label}
+                    </span>
+                    <span className={`pill pill-${eligibility.color}`}>
+                      {eligibility.label}
+                    </span>
+                  </div>
+                </div>
+
+                <p><strong>Company:</strong> {job.companyName}</p>
+                <p><strong>Package:</strong> {job.packageLPA} LPA</p>
+                <p><strong>Min CGPA:</strong> {job.minCgpa}</p>
+                <p><strong>Last Date:</strong> {new Date(job.lastDate).toLocaleDateString()}</p>
+                {job.description && <p>{job.description}</p>}
+
+                <div className="job-card-actions">
+                  {isApplied ? (
+                    <button className="btn btn-sm" disabled>Already Applied</button>
+                  ) : deadline.isExpired ? (
+                    <button className="btn btn-sm btn-disabled" disabled title="Deadline has passed">
+                      Deadline Passed
+                    </button>
+                  ) : !eligibility.eligible ? (
+                    <button className="btn btn-sm btn-disabled" disabled title="CGPA requirement not met">
+                      Not Eligible
+                    </button>
+                  ) : (
+                    <Button
+                      className="btn btn-primary btn-sm"
+                      loading={applyingJobId === job._id}
+                      loadingText="Applying..."
+                      onClick={() => handleApply(job._id)}
+                    >
+                      Apply
+                    </Button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 

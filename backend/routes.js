@@ -255,9 +255,28 @@ router.post('/jobs', protect, onlyAdmin, async (req, res, next) => {
     if (!title || !companyName || !lastDate) {
       return res.status(400).json({ message: 'Title, company name and last date are required.' });
     }
-    const job = await Job.create({ title, companyName, description, packageLPA, minCgpa, lastDate });
+
+    // Treat date like "2026-10-20" as the end of that day (23:59:59.999 IST, UTC+05:30)
+    let parsedLastDate;
+    if (typeof lastDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(lastDate)) {
+      parsedLastDate = new Date(`${lastDate}T23:59:59.999+05:30`);
+    } else {
+      parsedLastDate = new Date(lastDate);
+    }
+
+    const job = await Job.create({
+      title,
+      companyName,
+      description,
+      packageLPA,
+      minCgpa,
+      lastDate: parsedLastDate
+    });
     res.status(201).json(job);
-  } catch (err) { next(err); }
+  } catch (err) {
+    console.error('Create job failed:', err.message);
+    next(err);
+  }
 });
 
 // ---- Jobs: delete (admin only) ----

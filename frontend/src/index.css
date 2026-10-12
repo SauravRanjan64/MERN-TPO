@@ -541,5 +541,77 @@ h2 {
   font-size: 0.95rem;
 }
 
+/* ===== STEP 4: Deadline & Eligibility Pill Badges ===== */
+.job-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.job-card-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-bottom: 0.5rem;
+}
+
+.pill-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 0.4rem;
+}
+
+.pill {
+  display: inline-block;
+  padding: 0.2rem 0.55rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.pill-danger {
+  background-color: #fee2e2;
+  color: #b91c1c;
+  border: 1px solid #fca5a5;
+}
+
+.pill-warning {
+  background-color: #fef3c7;
+  color: #b45309;
+  border: 1px solid #fcd34d;
+}
+
+.pill-info {
+  background-color: #e0f2fe;
+  color: #0369a1;
+  border: 1px solid #bae6fd;
+}
+
+.pill-success {
+  background-color: #dcfce7;
+  color: #15803d;
+  border: 1px solid #86efac;
+}
+
+.pill-gray {
+  background-color: #f3f4f6;
+  color: #4b5563;
+  border: 1px solid #e5e7eb;
+}
+
+.job-card-actions {
+  margin-top: 0.8rem;
+}
+
+.btn-disabled {
+  background-color: #e5e7eb;
+  color: #9ca3af;
+  border: 1px solid #d1d5db;
+  cursor: not-allowed;
+}
+
+
 
 
