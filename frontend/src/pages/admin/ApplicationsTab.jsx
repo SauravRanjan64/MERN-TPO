@@ -1,7 +1,7 @@
-// Admin Applications tab: paginated applications with search, status, and job filtering
 import { useState, useEffect } from 'react';
 import api from '../../api';
 import { useToast } from '../../ToastContext';
+import Button from '../../components/Button';
 import Pagination from '../../components/Pagination';
 import usePaginatedFetch from '../../hooks/usePaginatedFetch';
 import useDebounce from '../../hooks/useDebounce';
@@ -12,6 +12,7 @@ export default function ApplicationsTab() {
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [jobFilter, setJobFilter] = useState('');
   const [allJobs, setAllJobs] = useState([]);
+  const [exporting, setExporting] = useState(false);
   const debouncedSearch = useDebounce(search, 400);
 
   // Fetch all jobs for dropdown filter
@@ -45,6 +46,50 @@ export default function ApplicationsTab() {
       reload();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to update status.');
+    }
+  };
+
+  // Export filtered applications as CSV via axios blob download
+  const handleExportCSV = async () => {
+    setExporting(true);
+    try {
+      const res = await api.get('/api/admin/export/applications', {
+        params: {
+          search: debouncedSearch,
+          status: statusFilter,
+          jobId: jobFilter
+        },
+        responseType: 'blob'
+      });
+
+      // Create a temporary link element to trigger the browser download
+      const blob = new Blob([res.data], { type: 'text/csv;charset=utf-8;' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `applications_export_${new Date().toISOString().split('T')[0]}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      toast.success('Applications exported to CSV successfully!');
+    } catch (err) {
+      console.error('Export CSV error:', err);
+      // When responseType is 'blob', error responses are returned as blobs
+      if (err.response?.data instanceof Blob) {
+        try {
+          const text = await err.response.data.text();
+          const json = JSON.parse(text);
+          toast.error(json.message || 'No applications found to export.');
+          return;
+        } catch (parseErr) {
+          // fallback to generic message
+        }
+      }
+      toast.error(err.response?.data?.message || 'Failed to export CSV. No applications match filters.');
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -98,6 +143,16 @@ export default function ApplicationsTab() {
               </option>
             ))}
           </select>
+
+          {/* Export CSV button */}
+          <Button
+            className="btn btn-success btn-sm"
+            onClick={handleExportCSV}
+            loading={exporting}
+            loadingText="Exporting..."
+          >
+            Export CSV
+          </Button>
         </div>
       </div>
 

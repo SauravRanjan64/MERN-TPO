@@ -13,6 +13,7 @@ export default function JobsTab() {
   const debouncedSearch = useDebounce(search, 400);
 
   const [creatingJob, setCreatingJob] = useState(false);
+  const [exportingJobId, setExportingJobId] = useState(null);
   const [jobForm, setJobForm] = useState({
     title: '', companyName: '', description: '', packageLPA: '', minCgpa: '', lastDate: ''
   });
@@ -30,6 +31,45 @@ export default function JobsTab() {
     search: debouncedSearch,
     limit: 10
   });
+
+  // Export applications for a single job as CSV
+  const handleExportJobCSV = async (jobId, jobTitle) => {
+    setExportingJobId(jobId);
+    try {
+      const res = await api.get('/api/admin/export/applications', {
+        params: { jobId },
+        responseType: 'blob'
+      });
+
+      const blob = new Blob([res.data], { type: 'text/csv;charset=utf-8;' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      const cleanTitle = (jobTitle || 'job').toLowerCase().replace(/[^a-z0-9]/g, '_');
+      link.setAttribute('download', `${cleanTitle}_applications.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      toast.success('Job applications exported successfully!');
+    } catch (err) {
+      console.error('Export job CSV failed:', err);
+      if (err.response?.data instanceof Blob) {
+        try {
+          const text = await err.response.data.text();
+          const json = JSON.parse(text);
+          toast.error(json.message || 'No applications found for this job.');
+          return;
+        } catch (parseErr) {
+          // fallback
+        }
+      }
+      toast.error(err.response?.data?.message || 'No applications found for this job.');
+    } finally {
+      setExportingJobId(null);
+    }
+  };
 
   // Create a new job
   const handleCreateJob = async (e) => {
@@ -156,12 +196,23 @@ export default function JobsTab() {
                   <td>{job.minCgpa}</td>
                   <td>{new Date(job.lastDate).toLocaleDateString()}</td>
                   <td>
-                    <button
-                      className="btn btn-sm btn-danger"
-                      onClick={() => handleDeleteJob(job._id)}
-                    >
-                      Delete
-                    </button>
+                    <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                      <Button
+                        className="btn btn-sm btn-outline"
+                        loading={exportingJobId === job._id}
+                        loadingText="Exporting..."
+                        onClick={() => handleExportJobCSV(job._id, job.title)}
+                        title="Export CSV of students who applied to this job"
+                      >
+                        Export CSV
+                      </Button>
+                      <button
+                        className="btn btn-sm btn-danger"
+                        onClick={() => handleDeleteJob(job._id)}
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

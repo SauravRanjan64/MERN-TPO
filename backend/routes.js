@@ -890,5 +890,138 @@ router.get('/admin/stats', protect, onlyAdmin, async (req, res, next) => {
   }
 });
 
+// Helper: Escape CSV cell to handle commas, newlines, quotes, and spreadsheet formula injection
+function formatCSVCell(value) {
+  if (value === null || value === undefined) {
+    return '""';
+  }
+
+  let str = String(value);
+
+  // Prevent formula injection: prefix cells that start with =, +, -, @ with an apostrophe
+  if (/^[=+\-@]/.test(str)) {
+    str = `'${str}`;
+  }
+
+  // Escape double quotes by doubling them
+  str = str.replace(/"/g, '""');
+
+  return `"${str}"`;
+}
+
+// GET /api/admin/export/applications: exports filtered applications as a CSV file
+router.get('/admin/export/applications', protect, onlyAdmin, async (req, res, next) => {
+  try {
+    const search = (req.query.search || '').trim();
+    const status = (req.query.status || '').trim();
+    const jobId = (req.query.jobId || '').trim();
+
+    const query = {};
+
+    // Filter by status
+    if (status && status !== 'ALL') {
+      query.status = status;
+    }
+
+    // Filter by job
+    if (jobId) {
+      query.job = jobId;
+    }
+
+    // Filter by search across user or job
+    if (search) {
+      const safeSearch = escapeRegex(search);
+      const [matchingUsers, matchingJobs] = await Promise.all([
+        User.find({
+          $or: [
+            { name: { $regex: safeSearch, $options: 'i' } },
+            { email: { $regex: safeSearch, $options: 'i' } },
+            { branch: { $regex: safeSearch, $options: 'i' } }
+          ]
+        }).select('_id'),
+        Job.find({
+          $or: [
+            { title: { $regex: safeSearch, $options: 'i' } },
+            { companyName: { $regex: safeSearch, $options: 'i' } }
+          ]
+        }).select('_id')
+      ]);
+
+      const userIds = matchingUsers.map((u) => u._id);
+      const jobIds = matchingJobs.map((j) => j._id);
+
+      query.$or = [
+        { user: { $in: userIds } },
+        { job: { $in: jobIds } }
+      ];
+    }
+
+    const applications = await Application.find(query)
+      .populate('user', 'name email phone branch cgpa skills')
+      .populate('job', 'title companyName')
+      .sort({ createdAt: -1 });
+
+    // If there are no rows, return 404 with a clear message
+    if (!applications || applications.length === 0) {
+      return res.status(404).json({ message: 'No applications found matching the selected filters to export.' });
+    }
+
+    // CSV header row
+    const headers = [
+      'Name',
+      'Email',
+      'Phone',
+      'Branch',
+      'CGPA',
+      'Skills',
+      'Company',
+      'Job',
+      'Status',
+      'Applied On'
+    ];
+
+    // Build CSV rows
+    const rows = applications.map((app) => {
+      const name = app.user?.name || '';
+      const email = app.user?.email || '';
+      const phone = app.user?.phone || '';
+      const branch = app.user?.branch || '';
+      const cgpa = app.user?.cgpa !== undefined ? app.user.cgpa : '';
+      const skills = Array.isArray(app.user?.skills) ? app.user.skills.join('; ') : '';
+      const company = app.job?.companyName || '';
+      const jobTitle = app.job?.title || '';
+      const appStatus = app.status || '';
+      const appliedOn = app.createdAt ? new Date(app.createdAt).toLocaleDateString() : '';
+
+      return [
+        formatCSVCell(name),
+        formatCSVCell(email),
+        formatCSVCell(phone),
+        formatCSVCell(branch),
+        formatCSVCell(cgpa),
+        formatCSVCell(skills),
+        formatCSVCell(company),
+        formatCSVCell(jobTitle),
+        formatCSVCell(appStatus),
+        formatCSVCell(appliedOn)
+      ].join(',');
+    });
+
+    // UTF-8 Byte Order Mark (BOM) so Excel opens UTF-8 text correctly
+    const bom = '\uFEFF';
+    const csvContent = bom + [headers.map((h) => `"${h}"`).join(','), ...rows].join('\r\n');
+
+    const timestamp = new Date().toISOString().split('T')[0];
+    const filename = `applications_export_${timestamp}.csv`;
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.status(200).send(csvContent);
+  } catch (err) {
+    console.error('Export CSV failed:', err.message);
+    next(err);
+  }
+});
+
 module.exports = router;
 
