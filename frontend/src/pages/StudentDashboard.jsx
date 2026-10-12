@@ -1,8 +1,9 @@
 // Student view: resume management + available jobs + my applications
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import api from '../api';
 import { useToast } from '../ToastContext';
 import Button from '../components/Button';
+import useDebounce from '../hooks/useDebounce';
 
 export default function StudentDashboard() {
   const { toast } = useToast();
@@ -10,24 +11,33 @@ export default function StudentDashboard() {
   const [myApps, setMyApps] = useState([]);
   const [resume, setResume] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [jobsLoading, setJobsLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [applyingJobId, setApplyingJobId] = useState(null);
   const fileInputRef = useRef(null);
 
-  // Fetch jobs, applications, and current resume on mount
+  // Search and filter states
+  const [companySearch, setCompanySearch] = useState('');
+  const [minPackageInput, setMinPackageInput] = useState('');
+  const [eligibleOnly, setEligibleOnly] = useState(false);
+
+  // Debounce the text inputs (~400ms delay)
+  const debouncedCompany = useDebounce(companySearch, 400);
+  const debouncedMinPackage = useDebounce(minPackageInput, 400);
+
+  // Fetch applications and resume once on mount
   useEffect(() => {
-    fetchData();
+    fetchInitialData();
   }, []);
 
-  async function fetchData() {
+  // Fetch initial profile & application records
+  async function fetchInitialData() {
     setLoading(true);
     try {
-      const [jobsRes, appsRes, resumeRes] = await Promise.all([
-        api.get('/api/jobs'),
+      const [appsRes, resumeRes] = await Promise.all([
         api.get('/api/applications/my'),
         api.get('/api/resume/my')
       ]);
-      setJobs(jobsRes.data);
       setMyApps(appsRes.data);
       setResume(resumeRes.data);
     } catch (err) {
@@ -36,6 +46,45 @@ export default function StudentDashboard() {
       setLoading(false);
     }
   }
+
+  // Fetch jobs with filters applied
+  const fetchJobs = useCallback(async () => {
+    setJobsLoading(true);
+    try {
+      const params = {};
+      if (debouncedCompany.trim()) {
+        params.company = debouncedCompany.trim();
+      }
+      if (debouncedMinPackage !== '') {
+        const pkg = Number(debouncedMinPackage);
+        if (!isNaN(pkg) && pkg >= 0) {
+          params.minPackage = pkg;
+        }
+      }
+      if (eligibleOnly) {
+        params.eligible = 'true';
+      }
+
+      const res = await api.get('/api/jobs', { params });
+      setJobs(res.data);
+    } catch (err) {
+      toast.error('Failed to fetch jobs.');
+    } finally {
+      setJobsLoading(false);
+    }
+  }, [debouncedCompany, debouncedMinPackage, eligibleOnly, toast]);
+
+  // Refetch jobs whenever any debounced filter changes
+  useEffect(() => {
+    fetchJobs();
+  }, [fetchJobs]);
+
+  // Clear all filters back to defaults
+  const handleClearFilters = () => {
+    setCompanySearch('');
+    setMinPackageInput('');
+    setEligibleOnly(false);
+  };
 
   // Handle resume file upload
   async function handleResumeUpload(e) {
@@ -90,7 +139,12 @@ export default function StudentDashboard() {
     try {
       await api.post(`/api/jobs/${jobId}/apply`);
       toast.success('Applied successfully!');
-      fetchData(); // refresh lists
+      // refresh both applications and job list
+      const [appsRes] = await Promise.all([
+        api.get('/api/applications/my'),
+        fetchJobs()
+      ]);
+      setMyApps(appsRes.data);
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to apply.');
     } finally {
@@ -159,7 +213,57 @@ export default function StudentDashboard() {
 
       <h2>Available Jobs</h2>
 
-      {jobs.length === 0 ? <p>No jobs posted yet.</p> : (
+      {/* Filter and Search Bar */}
+      <div className="card filter-bar">
+        <div className="filter-item">
+          <label>Search Company</label>
+          <input
+            type="text"
+            placeholder="e.g. Google, TCS"
+            value={companySearch}
+            onChange={(e) => setCompanySearch(e.target.value)}
+          />
+        </div>
+
+        <div className="filter-item">
+          <label>Min Package (LPA)</label>
+          <input
+            type="number"
+            min="0"
+            step="0.5"
+            placeholder="e.g. 6"
+            value={minPackageInput}
+            onChange={(e) => setMinPackageInput(e.target.value)}
+          />
+        </div>
+
+        <div className="filter-checkbox-item">
+          <label className="checkbox-label">
+            <input
+              type="checkbox"
+              checked={eligibleOnly}
+              onChange={(e) => setEligibleOnly(e.target.checked)}
+            />
+            Eligible for my CGPA
+          </label>
+        </div>
+
+        <div className="filter-actions">
+          <button
+            type="button"
+            className="btn btn-outline btn-sm"
+            onClick={handleClearFilters}
+          >
+            Clear Filters
+          </button>
+        </div>
+      </div>
+
+      {jobsLoading ? (
+        <p className="center">Loading jobs...</p>
+      ) : jobs.length === 0 ? (
+        <p className="no-data-msg">No jobs match your search or filters.</p>
+      ) : (
         <div className="card-grid">
           {jobs.map(job => (
             <div key={job._id} className="card">

@@ -209,12 +209,43 @@ router.put('/profile', protect, async (req, res, next) => {
   }
 });
 
-// ---- Jobs: list all (any logged-in user) ----
+// Helper: Escape special regex characters to prevent regex injection or crashes
+function escapeRegex(text) {
+  return text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+}
+
+// ---- Jobs: list all (with optional search and filters) ----
 router.get('/jobs', protect, async (req, res, next) => {
   try {
-    const jobs = await Job.find().sort({ createdAt: -1 });
+    const { company, minPackage, eligible } = req.query;
+    const filter = {};
+
+    // Filter by company name (partial match, case-insensitive, safely escaped)
+    if (company && typeof company === 'string' && company.trim() !== '') {
+      const safeCompany = escapeRegex(company.trim());
+      filter.companyName = { $regex: safeCompany, $options: 'i' };
+    }
+
+    // Filter by minimum package (packageLPA >= value)
+    if (minPackage !== undefined && minPackage !== '') {
+      const parsedMinPackage = Number(minPackage);
+      if (!isNaN(parsedMinPackage) && parsedMinPackage >= 0) {
+        filter.packageLPA = { $gte: parsedMinPackage };
+      }
+    }
+
+    // Filter by student eligibility (minCgpa <= student's CGPA)
+    if (eligible === 'true' && req.user && req.user.role === 'STUDENT') {
+      const studentCgpa = req.user.cgpa || 0;
+      filter.minCgpa = { $lte: studentCgpa };
+    }
+
+    const jobs = await Job.find(filter).sort({ createdAt: -1 });
     res.json(jobs);
-  } catch (err) { next(err); }
+  } catch (err) {
+    console.error('List jobs failed:', err.message);
+    next(err);
+  }
 });
 
 // ---- Jobs: create (admin only) ----
