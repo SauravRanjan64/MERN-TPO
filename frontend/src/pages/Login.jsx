@@ -1,6 +1,6 @@
 // Login + Register page (toggle between the two forms)
 import { useState } from 'react';
-import { useNavigate, Navigate } from 'react-router-dom';
+import { useNavigate, Navigate, Link } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { useToast } from '../ToastContext';
 import Button from '../components/Button';
@@ -81,6 +81,14 @@ export default function Login() {
           >
             {isRegister ? 'Register' : 'Login'}
           </Button>
+
+          {!isRegister && (
+            <p style={{ textAlign: 'center', marginTop: '0.5rem' }}>
+              <Link to="/forgot-password" className="link-btn" style={{ fontSize: '0.85rem' }}>
+                Forgot password?
+              </Link>
+            </p>
+          )}
 
           {submitting && (
             <p className="hint">Server may take up to a minute to wake up on first try.</p>

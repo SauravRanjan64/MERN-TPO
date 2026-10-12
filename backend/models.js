@@ -10,7 +10,9 @@ const userSchema = new mongoose.Schema({
   branch:   { type: String, default: '' },
   cgpa:     { type: Number, default: 0 },
   phone:    { type: String, default: '' },
-  skills:   { type: [String], default: [] }
+  skills:   { type: [String], default: [] },
+  resetPasswordToken:   { type: String, select: false },
+  resetPasswordExpires: { type: Date, select: false }
 }, { timestamps: true });
 
 // ---- Job schema (posted by admin) ----

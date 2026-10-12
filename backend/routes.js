@@ -1,10 +1,12 @@
 // All API routes in one file
 const express = require('express');
+const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const multer = require('multer');
 const { User, Job, Application, Resume } = require('./models');
 const { protect, onlyAdmin } = require('./middleware');
+const { sendMail } = require('./mailer');
 
 const router = express.Router();
 
@@ -163,6 +165,92 @@ router.put('/auth/password', protect, async (req, res, next) => {
     res.json({ message: 'Password changed successfully.' });
   } catch (err) {
     console.error('Change password failed:', err.message);
+    next(err);
+  }
+});
+
+// ---- Auth: forgot password ----
+router.post('/auth/forgot-password', async (req, res, next) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ message: 'Email is required.' });
+    }
+
+    const cleanEmail = email.toLowerCase().trim();
+    const user = await User.findOne({ email: cleanEmail });
+
+    // If user exists, create token, store hash, and send email
+    if (user) {
+      // Generate 32-byte secure random hex token
+      const rawToken = crypto.randomBytes(32).toString('hex');
+      // Store SHA-256 hash in database
+      const hashedToken = crypto.createHash('sha256').update(rawToken).digest('hex');
+
+      user.resetPasswordToken = hashedToken;
+      user.resetPasswordExpires = new Date(Date.now() + 3600000); // 1 hour from now
+      await user.save();
+
+      // Reset link sent to student
+      const appUrl = (process.env.APP_URL || 'http://localhost:5173').replace(/\/$/, '');
+      const resetLink = `${appUrl}/reset-password/${rawToken}`;
+
+      const emailText = `Hello ${user.name},\n\nYou requested a password reset for your DCRUST Placement Portal account.\n\nPlease click the link below or paste it into your browser to set a new password:\n${resetLink}\n\nThis link is valid for 1 hour.\n\nIf you did not request this, please ignore this email and your password will remain unchanged.`;
+
+      // Send mail (or log to console if SMTP env missing)
+      try {
+        await sendMail({
+          to: user.email,
+          subject: 'DCRUST Placement Portal - Password Reset',
+          text: emailText
+        });
+      } catch (mailErr) {
+        console.error('Failed to send reset email:', mailErr.message);
+      }
+    }
+
+    // ALWAYS reply with the exact same message whether or not email exists
+    res.json({
+      message: 'If an account exists with that email, a password reset link has been sent.'
+    });
+  } catch (err) {
+    console.error('Forgot password failed:', err.message);
+    next(err);
+  }
+});
+
+// ---- Auth: reset password with token ----
+router.post('/auth/reset-password/:token', async (req, res, next) => {
+  try {
+    const { token } = req.params;
+    const { password } = req.body;
+
+    if (!password || typeof password !== 'string' || password.length < 6) {
+      return res.status(400).json({ message: 'Password must be at least 6 characters.' });
+    }
+
+    // Hash the token provided in the URL to compare with database
+    const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+
+    // Find user with matching unexpired token
+    const user = await User.findOne({
+      resetPasswordToken: hashedToken,
+      resetPasswordExpires: { $gt: new Date() }
+    }).select('+password +resetPasswordToken +resetPasswordExpires');
+
+    if (!user) {
+      return res.status(400).json({ message: 'Password reset link is invalid or has expired.' });
+    }
+
+    // Set new hashed password and clear reset token fields
+    user.password = await bcrypt.hash(password, 10);
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpires = undefined;
+    await user.save();
+
+    res.json({ message: 'Password reset successful! You can now log in with your new password.' });
+  } catch (err) {
+    console.error('Reset password failed:', err.message);
     next(err);
   }
 });

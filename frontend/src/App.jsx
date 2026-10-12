@@ -6,6 +6,8 @@ import StudentDashboard from './pages/StudentDashboard';
 import AdminDashboard from './pages/AdminDashboard';
 import StudentProfile from './pages/StudentProfile';
 import ChangePassword from './pages/ChangePassword';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
 
 // ProtectedRoute: only allows logged-in users with the right role
 function ProtectedRoute({ children, role }) {
@@ -67,6 +69,8 @@ function AppContent() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password/:token" element={<ResetPassword />} />
           <Route path="/student" element={
             <ProtectedRoute role="STUDENT"><StudentDashboard /></ProtectedRoute>
           } />
