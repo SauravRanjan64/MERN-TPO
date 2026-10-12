@@ -39,7 +39,8 @@ app.use(cors({
     return callback(new Error('CORS: origin not allowed: ' + origin));
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  exposedHeaders: ['Content-Disposition']
 }));
 
 // ---- Parse JSON bodies ----

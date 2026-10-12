@@ -793,5 +793,102 @@ router.get('/admin/applications', protect, onlyAdmin, async (req, res, next) => 
   }
 });
 
+// GET /api/admin/stats: aggregate placement and portal metrics for charts and summary cards
+router.get('/admin/stats', protect, onlyAdmin, async (req, res, next) => {
+  try {
+    // 1. Fetch total count of students
+    const totalStudents = await User.countDocuments({ role: 'STUDENT' });
+
+    // 2. Fetch total count of posted jobs
+    const totalJobs = await Job.countDocuments();
+
+    // 3. Fetch total count of applications submitted
+    const totalApplications = await Application.countDocuments();
+
+    // 4. Fetch placed students (distinct student IDs having at least one 'SELECTED' application)
+    const placedStudentsList = await Application.distinct('user', { status: 'SELECTED' });
+    const placedStudents = placedStudentsList.length;
+
+    // 5. Count applications grouped by status (APPLIED, SHORTLISTED, SELECTED, REJECTED)
+    const statusAgg = await Application.aggregate([
+      {
+        $group: {
+          _id: '$status',
+          count: { $sum: 1 }
+        }
+      }
+    ]);
+    const statusCounts = {
+      APPLIED: 0,
+      SHORTLISTED: 0,
+      SELECTED: 0,
+      REJECTED: 0
+    };
+    statusAgg.forEach((item) => {
+      if (item._id && statusCounts[item._id] !== undefined) {
+        statusCounts[item._id] = item.count;
+      }
+    });
+
+    // 6. MongoDB Aggregation Pipeline: Calculate applications per company
+    // Stage 1: $lookup joins the 'jobs' collection using Application.job -> Job._id
+    // Stage 2: $unwind flattens the joined job array into an object for each application
+    // Stage 3: $group groups applications by job.companyName and sums the total applications
+    // Stage 4: $sort orders the companies from highest number of applications to lowest
+    // Stage 5: $limit caps the results to the top 10 companies for clean charting
+    // Stage 6: $project formats the output with readable keys (company, applications)
+    const applicationsPerCompany = await Application.aggregate([
+      // Stage 1: Join jobs collection to access companyName
+      {
+        $lookup: {
+          from: 'jobs',
+          localField: 'job',
+          foreignField: '_id',
+          as: 'jobDetails'
+        }
+      },
+      // Stage 2: Unwind jobDetails array so jobDetails is a single document
+      {
+        $unwind: '$jobDetails'
+      },
+      // Stage 3: Group by companyName and count occurrences
+      {
+        $group: {
+          _id: '$jobDetails.companyName',
+          count: { $sum: 1 }
+        }
+      },
+      // Stage 4: Sort descending by count
+      {
+        $sort: { count: -1 }
+      },
+      // Stage 5: Limit to top 10 companies
+      {
+        $limit: 10
+      },
+      // Stage 6: Format fields for frontend chart
+      {
+        $project: {
+          _id: 0,
+          company: '$_id',
+          applications: '$count'
+        }
+      }
+    ]);
+
+    res.json({
+      totalStudents,
+      totalJobs,
+      totalApplications,
+      placedStudents,
+      statusCounts,
+      applicationsPerCompany
+    });
+  } catch (err) {
+    console.error('Admin stats calculation failed:', err.message);
+    next(err);
+  }
+});
+
 module.exports = router;
 

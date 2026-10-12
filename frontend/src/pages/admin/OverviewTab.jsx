@@ -1,25 +1,40 @@
-// Admin Overview tab: displays high-level counts and student resume reviews
+// Admin Overview tab: displays 4 stat summary cards, Recharts applications bar chart, and resume review table
 import { useState, useEffect } from 'react';
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid
+} from 'recharts';
 import api from '../../api';
 import { useToast } from '../../ToastContext';
 
 export default function OverviewTab({ onSwitchTab }) {
   const { toast } = useToast();
+  const [stats, setStats] = useState(null);
   const [resumes, setResumes] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Fetch resumes list
+  // Fetch overview stats and pending resumes on mount
   useEffect(() => {
-    fetchResumes();
+    fetchOverviewData();
   }, []);
 
-  const fetchResumes = async () => {
+  const fetchOverviewData = async () => {
     setLoading(true);
     try {
-      const res = await api.get('/api/resumes');
-      setResumes(res.data);
+      const [statsRes, resumesRes] = await Promise.all([
+        api.get('/api/admin/stats'),
+        api.get('/api/resumes')
+      ]);
+      setStats(statsRes.data);
+      setResumes(resumesRes.data);
     } catch (err) {
-      toast.error('Failed to load resumes.');
+      console.error('Failed to load overview data:', err.message);
+      toast.error('Failed to load dashboard overview data.');
     } finally {
       setLoading(false);
     }
@@ -42,7 +57,7 @@ export default function OverviewTab({ onSwitchTab }) {
     try {
       await api.put(`/api/resumes/${resumeId}/review`, { status: 'APPROVED', remarks });
       toast.success('Resume approved. Student has been emailed.');
-      fetchResumes();
+      fetchOverviewData();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to approve resume.');
     }
@@ -59,7 +74,7 @@ export default function OverviewTab({ onSwitchTab }) {
     try {
       await api.put(`/api/resumes/${resumeId}/review`, { status: 'REJECTED', remarks: remarks.trim() });
       toast.success('Resume rejected. Student has been emailed.');
-      fetchResumes();
+      fetchOverviewData();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to reject resume.');
     }
@@ -67,14 +82,87 @@ export default function OverviewTab({ onSwitchTab }) {
 
   return (
     <div>
-      <div className="overview-banner card" style={{ marginBottom: '1.5rem', background: '#eff6ff', border: '1px solid #bfdbfe' }}>
-        <h3>Welcome to Admin Management</h3>
-        <p style={{ marginTop: '0.25rem', color: '#1e40af', fontSize: '0.95rem' }}>
-          Use the tabs above to manage Jobs, review student Applications, or search the Student directory.
-        </p>
+      {/* 4 Key Metrics Number Cards */}
+      <div className="stats-grid">
+        <div className="stat-card" style={{ borderLeft: '4px solid #1a56db' }}>
+          <p className="stat-label">Total Students</p>
+          <h3 className="stat-value">{stats ? stats.totalStudents : '-'}</h3>
+          <span className="stat-subtext">Registered candidates</span>
+        </div>
+
+        <div className="stat-card" style={{ borderLeft: '4px solid #0284c7' }}>
+          <p className="stat-label">Active Jobs</p>
+          <h3 className="stat-value">{stats ? stats.totalJobs : '-'}</h3>
+          <span className="stat-subtext">Open recruitment drives</span>
+        </div>
+
+        <div className="stat-card" style={{ borderLeft: '4px solid #d97706' }}>
+          <p className="stat-label">Total Applications</p>
+          <h3 className="stat-value">{stats ? stats.totalApplications : '-'}</h3>
+          <span className="stat-subtext">Applications submitted</span>
+        </div>
+
+        <div className="stat-card" style={{ borderLeft: '4px solid #16a34a' }}>
+          <p className="stat-label">Placed Students</p>
+          <h3 className="stat-value">{stats ? stats.placedStudents : '-'}</h3>
+          <span className="stat-subtext">Offers accepted / selected</span>
+        </div>
       </div>
 
-      <h2>Student Resumes Under Review ({resumes.length})</h2>
+      {/* Bar Chart Section: Applications per Company */}
+      <div className="card chart-card" style={{ marginTop: '1.5rem', padding: '1.5rem' }}>
+        <h3 style={{ marginBottom: '0.25rem' }}>Applications per Company</h3>
+        <p className="hint" style={{ textAlign: 'left', marginBottom: '1.25rem' }}>
+          Breakdown of total student applications submitted across top hiring partners.
+        </p>
+
+        {loading ? (
+          <p className="center">Loading chart data...</p>
+        ) : !stats || !stats.applicationsPerCompany || stats.applicationsPerCompany.length === 0 ? (
+          <p className="no-data-msg">No application data available yet for graphing.</p>
+        ) : (
+          <div style={{ width: '100%', height: 320 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={stats.applicationsPerCompany}
+                margin={{ top: 10, right: 20, left: 0, bottom: 25 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                <XAxis
+                  dataKey="company"
+                  tick={{ fontSize: 12, fill: '#4b5563' }}
+                  interval={0}
+                  angle={-15}
+                  textAnchor="end"
+                />
+                <YAxis
+                  allowDecimals={false}
+                  tick={{ fontSize: 12, fill: '#4b5563' }}
+                />
+                <Tooltip
+                  cursor={{ fill: 'rgba(26, 86, 219, 0.05)' }}
+                  contentStyle={{
+                    backgroundColor: '#fff',
+                    borderRadius: '8px',
+                    border: '1px solid #e5e7eb',
+                    boxShadow: '0 4px 6px rgba(0,0,0,0.08)'
+                  }}
+                  formatter={(value) => [`${value} applications`, 'Total']}
+                />
+                <Bar
+                  dataKey="applications"
+                  fill="#1a56db"
+                  radius={[4, 4, 0, 0]}
+                  barSize={36}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </div>
+
+      {/* Student Resumes Section */}
+      <h2 style={{ marginTop: '2.5rem' }}>Student Resumes Under Review ({resumes.length})</h2>
       {loading ? (
         <p className="center">Loading resumes...</p>
       ) : resumes.length === 0 ? (
