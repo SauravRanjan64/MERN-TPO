@@ -1,7 +1,9 @@
 // Entry point: setup express, connect DB, start server
 require('dotenv').config();
-const dns = require('dns');
-dns.setServers(['8.8.8.8', '8.8.4.4']); // Use reliable public DNS to prevent ECONNREFUSED on MongoDB SRV lookups
+if (process.env.NODE_ENV !== 'production') {
+  const dns = require('dns');
+  dns.setServers(['8.8.8.8', '8.8.4.4']); // Local development workaround for network SRV lookup issues
+}
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
@@ -35,10 +37,12 @@ const allowedOrigins = [
 
 app.use(cors({
   origin: function (origin, callback) {
-    // allow requests with no origin (curl, Postman, etc.)
+    // allow requests with no origin (curl, Postman, server-to-server, etc.)
     if (!origin) return callback(null, true);
     if (allowedOrigins.includes(origin)) return callback(null, true);
-    return callback(new Error('CORS: origin not allowed: ' + origin));
+    const corsErr = new Error('CORS: origin not allowed: ' + origin);
+    corsErr.status = 403;
+    return callback(corsErr);
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
@@ -48,7 +52,26 @@ app.use(cors({
 // ---- Parse JSON bodies ----
 app.use(express.json());
 
-// ---- Root health check ----
+// Helper to describe Mongoose connection readyState
+function getDbStateText(state) {
+  switch (state) {
+    case 0: return 'disconnected';
+    case 1: return 'connected';
+    case 2: return 'connecting';
+    case 3: return 'disconnecting';
+    default: return 'unknown';
+  }
+}
+
+// ---- Health check ----
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    db: getDbStateText(mongoose.connection.readyState)
+  });
+});
+
+// Root route redirects or returns basic health
 app.get('/', (req, res) => res.json({ status: 'ok' }));
 
 // ---- Mount all API routes under /api ----
@@ -111,14 +134,20 @@ async function seedIfEmpty() {
   console.log('Seeding complete: admin, student, 2 jobs created.');
 }
 
-// ---- Connect to MongoDB, seed, then start server ----
-mongoose.connect(process.env.MONGODB_URI)
+// ---- Start HTTP server first so Render port detection passes immediately ----
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server running on port ${PORT} (0.0.0.0)`);
+});
+
+// ---- Connect to MongoDB and seed afterwards ----
+mongoose.connect(process.env.MONGODB_URI, {
+  serverSelectionTimeoutMS: 10000
+})
   .then(async () => {
     console.log('Connected to MongoDB');
     await seedIfEmpty();
-    app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
   })
   .catch(err => {
-    console.error('MongoDB connection failed:', err.message);
+    console.error('MongoDB connection failed:', err.message, err.stack);
     process.exit(1);
   });
