@@ -1,5 +1,7 @@
 // Entry point: setup express, connect DB, start server
 require('dotenv').config();
+const dns = require('dns');
+dns.setServers(['8.8.8.8', '8.8.4.4']); // Use reliable public DNS to prevent ECONNREFUSED on MongoDB SRV lookups
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
