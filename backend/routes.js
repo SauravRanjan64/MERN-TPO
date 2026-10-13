@@ -201,12 +201,12 @@ router.post('/auth/forgot-password', async (req, res, next) => {
       const appUrl = (process.env.APP_URL || 'http://localhost:5173').replace(/\/$/, '');
       const resetLink = `${appUrl}/reset-password/${rawToken}`;
 
-      const emailText = `Hello ${user.name},\n\nYou requested a password reset for your DCRUST Placement Portal account.\n\nPlease click the link below or paste it into your browser to set a new password:\n${resetLink}\n\nThis link is valid for 1 hour.\n\nIf you did not request this, please ignore this email and your password will remain unchanged.`;
+      const emailText = `Hello ${user.name},\n\nYou requested a password reset for your Placement Portal account.\n\nPlease click the link below or paste it into your browser to set a new password:\n${resetLink}\n\nThis link is valid for 1 hour.\n\nIf you did not request this, please ignore this email and your password will remain unchanged.`;
 
       // Send mail without await so response time is identical whether email exists or not
       sendMail({
         to: user.email,
-        subject: 'DCRUST Placement Portal - Password Reset',
+        subject: 'Placement Portal - Password Reset',
         text: emailText
       }).catch(err => console.error('Reset mail failed:', err.message));
     }
@@ -570,7 +570,7 @@ router.put('/applications/:id/status', protect, onlyAdmin, async (req, res, next
       const companyName = existingApp.job?.companyName || 'Company';
 
       const emailSubject = `Application Update: ${jobTitle} at ${companyName} - ${status}`;
-      const emailBody = `Hello ${studentName},\n\nYour application status for the position of "${jobTitle}" at "${companyName}" has been updated to: ${status}.\n\nPlease log in to the DCRUST Placement Portal to view the full details.\n\nBest regards,\nTraining & Placement Cell, DCRUST`;
+      const emailBody = `Hello ${studentName},\n\nYour application status for the position of "${jobTitle}" at "${companyName}" has been updated to: ${status}.\n\nPlease log in to the Placement Portal to view the full details.\n\nBest regards,\nTraining & Placement Cell`;
 
       // Non-blocking fire-and-forget: mail problem will never fail the status update
       sendMail({
@@ -694,7 +694,7 @@ router.put('/resumes/:id/review', protect, onlyAdmin, async (req, res, next) => 
       if (cleanRemarks) {
         emailBody += `\nRemarks: ${cleanRemarks}`;
       }
-      emailBody += `\n\nPlease log in to the DCRUST Placement Portal for details.\n\nBest regards,\nTraining & Placement Cell, DCRUST`;
+      emailBody += `\n\nPlease log in to the Placement Portal for details.\n\nBest regards,\nTraining & Placement Cell`;
 
       sendMail({
         to: existingResume.user.email,

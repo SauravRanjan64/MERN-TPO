@@ -34,7 +34,7 @@ function Navbar() {
 
   return (
     <nav className="navbar">
-      <Link to="/" className="nav-brand">DCRUST Placement Portal</Link>
+      <Link to="/" className="nav-brand">Placement Portal</Link>
       <div className="nav-right">
         {user.role === 'STUDENT' && (
           <>

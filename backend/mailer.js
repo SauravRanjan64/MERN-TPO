@@ -29,7 +29,7 @@ async function sendMail({ to, subject, text }) {
   });
 
   const mailOptions = {
-    from: MAIL_FROM || `"DCRUST Placement Portal" <${SMTP_USER}>`,
+    from: MAIL_FROM || `"Placement Portal" <${SMTP_USER}>`,
     to,
     subject,
     text

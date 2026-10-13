@@ -1,7 +1,7 @@
 {
-  "name": "dcrust-placement-backend",
+  "name": "placement-portal-backend",
   "version": "1.0.0",
-  "description": "DCRUST Placement Portal API",
+  "description": "Placement Portal API",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

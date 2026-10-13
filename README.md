@@ -1,6 +1,6 @@
-# DCRUST Placement Portal
+# Placement Portal
 
-A MERN stack campus recruitment portal built for Deenbandhu Chhotu Ram University of Science and Technology (DCRUST). Enables students to build profiles, upload PDF resumes, and apply to eligible campus drives, while training & placement officers (admins) manage recruitment drives, track student applications, review resumes, analyze statistics, and export reports.
+A MERN stack campus recruitment portal. Enables students to build profiles, upload PDF resumes, and apply to eligible campus drives, while training & placement officers (admins) manage recruitment drives, track student applications, review resumes, analyze statistics, and export reports.
 
 ---
 
