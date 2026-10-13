@@ -347,6 +347,66 @@ function escapeRegex(text) {
   return text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
 }
 
+// Helper to extract pagination and search query parameters
+function getPageParams(query) {
+  const page = Math.max(1, parseInt(query.page, 10) || 1);
+  const limit = Math.min(50, Math.max(1, parseInt(query.limit, 10) || 10));
+  const skip = (page - 1) * limit;
+  const search = (query.search || '').trim();
+  return { page, limit, skip, search };
+}
+
+// Helper to construct application filter query from search, status, and jobId
+async function buildApplicationFilter(query) {
+  const search = (query.search || '').trim();
+  const status = (query.status || '').trim();
+  const jobId = (query.jobId || '').trim();
+
+  const filter = {};
+
+  if (status && status !== 'ALL') {
+    filter.status = status;
+  }
+
+  if (jobId) {
+    if (!mongoose.isValidObjectId(jobId)) {
+      const err = new Error('Invalid job id.');
+      err.status = 400;
+      throw err;
+    }
+    filter.job = jobId;
+  }
+
+  if (search) {
+    const safeSearch = escapeRegex(search);
+    const [matchingUsers, matchingJobs] = await Promise.all([
+      User.find({
+        $or: [
+          { name: { $regex: safeSearch, $options: 'i' } },
+          { email: { $regex: safeSearch, $options: 'i' } },
+          { branch: { $regex: safeSearch, $options: 'i' } }
+        ]
+      }).select('_id'),
+      Job.find({
+        $or: [
+          { title: { $regex: safeSearch, $options: 'i' } },
+          { companyName: { $regex: safeSearch, $options: 'i' } }
+        ]
+      }).select('_id')
+    ]);
+
+    const userIds = matchingUsers.map((u) => u._id);
+    const jobIds = matchingJobs.map((j) => j._id);
+
+    filter.$or = [
+      { user: { $in: userIds } },
+      { job: { $in: jobIds } }
+    ];
+  }
+
+  return filter;
+}
+
 // ---- Jobs: list all (with optional search and filters) ----
 router.get('/jobs', protect, async (req, res, next) => {
   try {
@@ -654,10 +714,7 @@ router.put('/resumes/:id/review', protect, onlyAdmin, async (req, res, next) => 
 // GET /api/admin/jobs: paginated jobs list with search
 router.get('/admin/jobs', protect, onlyAdmin, async (req, res, next) => {
   try {
-    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
-    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 10));
-    const skip = (page - 1) * limit;
-    const search = (req.query.search || '').trim();
+    const { page, limit, skip, search } = getPageParams(req.query);
 
     const query = {};
     if (search) {
@@ -691,10 +748,7 @@ router.get('/admin/jobs', protect, onlyAdmin, async (req, res, next) => {
 // GET /api/admin/students: paginated students list with search
 router.get('/admin/students', protect, onlyAdmin, async (req, res, next) => {
   try {
-    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
-    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 10));
-    const skip = (page - 1) * limit;
-    const search = (req.query.search || '').trim();
+    const { page, limit, skip, search } = getPageParams(req.query);
 
     const query = { role: 'STUDENT' };
     if (search) {
@@ -733,53 +787,8 @@ router.get('/admin/students', protect, onlyAdmin, async (req, res, next) => {
 // GET /api/admin/applications: paginated applications with search, status, and jobId filters
 router.get('/admin/applications', protect, onlyAdmin, async (req, res, next) => {
   try {
-    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
-    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 10));
-    const skip = (page - 1) * limit;
-    const search = (req.query.search || '').trim();
-    const status = (req.query.status || '').trim();
-    const jobId = (req.query.jobId || '').trim();
-
-    const query = {};
-
-    // Filter by application status
-    if (status && status !== 'ALL') {
-      query.status = status;
-    }
-
-    // Filter by specific job
-    if (jobId) {
-      if (!isValidId(jobId)) return res.status(400).json({ message: 'Invalid id.' });
-      query.job = jobId;
-    }
-
-    // Because student/job details live in separate collections, find matching IDs first
-    if (search) {
-      const safeSearch = escapeRegex(search);
-      const [matchingUsers, matchingJobs] = await Promise.all([
-        User.find({
-          $or: [
-            { name: { $regex: safeSearch, $options: 'i' } },
-            { email: { $regex: safeSearch, $options: 'i' } },
-            { branch: { $regex: safeSearch, $options: 'i' } }
-          ]
-        }).select('_id'),
-        Job.find({
-          $or: [
-            { title: { $regex: safeSearch, $options: 'i' } },
-            { companyName: { $regex: safeSearch, $options: 'i' } }
-          ]
-        }).select('_id')
-      ]);
-
-      const userIds = matchingUsers.map((u) => u._id);
-      const jobIds = matchingJobs.map((j) => j._id);
-
-      query.$or = [
-        { user: { $in: userIds } },
-        { job: { $in: jobIds } }
-      ];
-    }
+    const { page, limit, skip } = getPageParams(req.query);
+    const query = await buildApplicationFilter(req.query);
 
     const [total, data] = await Promise.all([
       Application.countDocuments(query),
@@ -925,50 +934,7 @@ function formatCSVCell(value) {
 // GET /api/admin/export/applications: exports filtered applications as a CSV file
 router.get('/admin/export/applications', protect, onlyAdmin, async (req, res, next) => {
   try {
-    const search = (req.query.search || '').trim();
-    const status = (req.query.status || '').trim();
-    const jobId = (req.query.jobId || '').trim();
-
-    const query = {};
-
-    // Filter by status
-    if (status && status !== 'ALL') {
-      query.status = status;
-    }
-
-    // Filter by job
-    if (jobId) {
-      if (!isValidId(jobId)) return res.status(400).json({ message: 'Invalid id.' });
-      query.job = jobId;
-    }
-
-    // Filter by search across user or job
-    if (search) {
-      const safeSearch = escapeRegex(search);
-      const [matchingUsers, matchingJobs] = await Promise.all([
-        User.find({
-          $or: [
-            { name: { $regex: safeSearch, $options: 'i' } },
-            { email: { $regex: safeSearch, $options: 'i' } },
-            { branch: { $regex: safeSearch, $options: 'i' } }
-          ]
-        }).select('_id'),
-        Job.find({
-          $or: [
-            { title: { $regex: safeSearch, $options: 'i' } },
-            { companyName: { $regex: safeSearch, $options: 'i' } }
-          ]
-        }).select('_id')
-      ]);
-
-      const userIds = matchingUsers.map((u) => u._id);
-      const jobIds = matchingJobs.map((j) => j._id);
-
-      query.$or = [
-        { user: { $in: userIds } },
-        { job: { $in: jobIds } }
-      ];
-    }
+    const query = await buildApplicationFilter(req.query);
 
     const applications = await Application.find(query)
       .populate('user', 'name email phone branch cgpa skills')
